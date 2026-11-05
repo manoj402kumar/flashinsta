@@ -17,7 +17,6 @@ import {
   Instagram,
   Eye,
   EyeOff,
-  BookOpen,
   Copy,
   Check,
   ArrowRight,
@@ -139,37 +138,6 @@ export function ConnectInstagramModal({
                   : "Automate your Instagram DMs, comments, and story replies with your Meta API credentials."}
               </DialogDescription>
             </div>
-          </div>
-
-          {/* Tab Selector */}
-          <div className="flex items-center gap-1 mt-4 p-1 bg-background/80 border border-border rounded-xl">
-            <button
-              type="button"
-              onClick={() => setActiveTab("connect")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-mono-ui font-semibold rounded-lg transition-all cursor-pointer ${
-                activeTab === "connect"
-                  ? "bg-[#ffe14d] text-black shadow-xs"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
-              }`}
-            >
-              <Key className="size-3.5" />
-              Connect Token
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("guide")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-mono-ui font-semibold rounded-lg transition-all cursor-pointer ${
-                activeTab === "guide"
-                  ? "bg-[#ffe14d] text-black shadow-xs"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
-              }`}
-            >
-              <BookOpen className="size-3.5" />
-              How to Get Token (Guide)
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-secondary border border-border text-foreground font-normal">
-                3 min
-              </span>
-            </button>
           </div>
         </div>
 
@@ -307,6 +275,17 @@ export function ConnectInstagramModal({
           ) : (
             /* Guide Tab */
             <div className="space-y-4 font-mono-ui text-xs">
+              <div className="flex items-center justify-between pb-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("connect")}
+                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-semibold cursor-pointer transition-colors"
+                >
+                  <ArrowRight className="size-3.5 rotate-180" />
+                  Back to Connect
+                </button>
+              </div>
+
               {/* Meta Explorer Direct Link Card */}
               <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div className="space-y-0.5">
