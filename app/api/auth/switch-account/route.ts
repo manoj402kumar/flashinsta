@@ -7,7 +7,7 @@ import type { SwitchAccountRequest } from "@/lib/types"
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getSessionFromRequest(request)
+    const session = await getSessionFromRequest(request)
     if (!session || !session.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -20,11 +20,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing targetUserId parameter" }, { status: 400 })
     }
 
-    // 1. Strict Security Check: Verify target account is authorized and linked
-    const isAllowed = await isAccountSwitchAllowed(session.userId, targetUserId)
+    // 1. Strict Security Check: Verify target account is owned by the exact same Google account
+    const isAllowed = await isAccountSwitchAllowed(session.userId, targetUserId, session.email)
     if (!isAllowed) {
       return NextResponse.json(
-        { error: "Access denied: Account is not linked to your current session." },
+        { error: "Access denied: Account is not linked to your Google account." },
         { status: 403 }
       )
     }

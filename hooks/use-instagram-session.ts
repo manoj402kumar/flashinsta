@@ -291,7 +291,11 @@ export function useInstagramSession() {
     const logout = async () => {
         try {
             // 1. Invalidate and clear the HTTP-only cookie on the server
-            await fetch("/api/auth/logout", { method: "POST" })
+            await fetch("/api/auth/logout", {
+                method: "POST",
+                headers: { "Cache-Control": "no-cache" },
+                cache: "no-store",
+            })
         } catch (e) {
             console.error("Logout request failed:", e)
         }
@@ -316,11 +320,11 @@ export function useInstagramSession() {
         setBusinessAccountId(null)
         setAccounts([])
 
-        // 4. Force hard page reload to bust all Next.js router cache and force a 100% clean slate
+        // 4. Force hard navigation using location.replace to purge bfcache and overwrite history entry
         if (typeof window !== "undefined") {
-            window.location.href = "/"
+            window.location.replace("/?auth=login")
         } else {
-            router.push("/")
+            router.replace("/?auth=login")
         }
     }
 

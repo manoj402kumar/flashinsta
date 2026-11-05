@@ -29,9 +29,22 @@ function getSessionSecret(): string {
   return "dev-only-local-secret-do-not-use-in-production"
 }
 
+// Fast in-memory cache for recent edge session validations (1.5s TTL)
+const edgeSessionValidationCache = new Map<string, { valid: boolean; timestamp: number }>()
+const edgeRevokedSids = new Set<string>()
+const EDGE_CACHE_TTL_MS = 1500
+
+export function revokeSessionIdEdgeLocally(sid: string): void {
+  if (!sid) return
+  edgeRevokedSids.add(sid)
+  edgeSessionValidationCache.delete(sid)
+}
+
 /**
  * Edge-compatible session token verifier using standard W3C Web Cryptography API.
  * Contains no Node.js runtime dependencies and executes safely in Next.js Edge Middleware.
+ * Fully checks HMAC signature, expiration, idle timeout, and validates against
+ * persistent server-side revocation in Supabase (session_revoked_at & revoked_sids).
  */
 export async function verifySessionTokenEdge(token: string): Promise<EdgeSessionData | null> {
   if (!token || typeof token !== "string") return null
@@ -92,6 +105,63 @@ export async function verifySessionTokenEdge(token: string): Promise<EdgeSession
 
     // 2. Enforce idle timeout (24 hours)
     if (data.lastActive && now - data.lastActive > 24 * 60 * 60 * 1000) return null
+
+    // 3. Local edge revocation check
+    if (data.sid && edgeRevokedSids.has(data.sid)) return null
+
+    // 4. Persistent Revocation Check against Supabase
+    const cacheKey = data.sid || `${data.userId}:${data.iat}`
+    const cached = edgeSessionValidationCache.get(cacheKey)
+    if (cached && now - cached.timestamp < EDGE_CACHE_TTL_MS) {
+      if (!cached.valid) return null
+      return data
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (supabaseUrl && serviceKey) {
+      try {
+        const res = await fetch(
+          `${supabaseUrl}/rest/v1/users?id=eq.${encodeURIComponent(data.userId)}&select=id,ai_context`,
+          {
+            headers: {
+              apikey: serviceKey,
+              Authorization: `Bearer ${serviceKey}`,
+            },
+            signal: AbortSignal.timeout(3000),
+          }
+        )
+
+        if (res.ok) {
+          const rows = await res.json()
+          if (!rows || rows.length === 0) {
+            edgeSessionValidationCache.set(cacheKey, { valid: false, timestamp: now })
+            return null
+          }
+
+          const userRow = rows[0]
+          if (userRow?.ai_context) {
+            try {
+              const ctx = JSON.parse(userRow.ai_context)
+              const revokedAt = ctx.session_revoked_at ? Number(ctx.session_revoked_at) : 0
+              if (revokedAt && data.iat && data.iat <= revokedAt) {
+                edgeSessionValidationCache.set(cacheKey, { valid: false, timestamp: now })
+                return null
+              }
+              if (data.sid && Array.isArray(ctx.revoked_sids) && ctx.revoked_sids.includes(data.sid)) {
+                edgeSessionValidationCache.set(cacheKey, { valid: false, timestamp: now })
+                return null
+              }
+            } catch {}
+          }
+
+          edgeSessionValidationCache.set(cacheKey, { valid: true, timestamp: now })
+        }
+      } catch (err) {
+        // If Supabase check times out or has temporary network error, log and allow cryptographic fallback
+        console.warn("[EdgeSession] Revocation check network notice:", err)
+      }
+    }
 
     return data
   } catch {

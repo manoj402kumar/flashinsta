@@ -9,7 +9,7 @@ async function handleLogout(request: NextRequest) {
   )
 
   try {
-    const session = getSessionFromRequest(request)
+    const session = await getSessionFromRequest(request)
     const revokeAll = request.nextUrl.searchParams.get("all") === "true"
 
     if (session) {
@@ -18,7 +18,7 @@ async function handleLogout(request: NextRequest) {
         revokeSessionIdLocally(session.sid, session.exp)
       }
 
-      // 2. Persistent server-side revocation in database
+      // 2. Persistent server-side revocation in Supabase database
       if (session.userId) {
         const admin = getSupabaseAdmin()
         const { data: user } = await admin
@@ -32,15 +32,15 @@ async function handleLogout(request: NextRequest) {
           if (user?.ai_context) ctx = JSON.parse(user.ai_context)
         } catch {}
 
+        const now = Date.now()
+        // Always mark session_revoked_at and explicitly record the revoked sid
+        ctx.session_revoked_at = now
+        if (session.sid) {
+          const currentList = Array.isArray(ctx.revoked_sids) ? ctx.revoked_sids : []
+          ctx.revoked_sids = [...currentList.filter((s: string) => s !== session.sid), session.sid].slice(-100)
+        }
         if (revokeAll) {
-          // Invalidate ALL sessions across all devices for this user
-          ctx.session_revoked_at = Date.now()
-        } else {
-          // Single-session logout: append sid to revoked list (retaining 25 most recent)
-          if (session.sid) {
-            const currentList = Array.isArray(ctx.revoked_sids) ? ctx.revoked_sids : []
-            ctx.revoked_sids = [...currentList.filter((s: string) => s !== session.sid), session.sid].slice(-25)
-          }
+          ctx.revoked_sids = []
         }
 
         await admin
@@ -56,8 +56,13 @@ async function handleLogout(request: NextRequest) {
     console.error("[Logout] Server-side revocation error:", error)
   }
 
-  // Clear HTTP-only session cookies with matching attributes
+  // Clear HTTP-only session cookies with all matching attributes
   clearSessionCookie(response)
+
+  // Enforce zero caching and instruct browsers to purge storage
+  response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
+  response.headers.set("Pragma", "no-cache")
+  response.headers.set("Clear-Site-Data", `"cookies", "storage"`)
 
   return response
 }

@@ -5,7 +5,7 @@ import { parseSafeJson, safeErrorResponse } from "@/lib/security"
 
 export async function GET(request: NextRequest) {
   try {
-    const session = getSessionFromRequest(request)
+    const session = await getSessionFromRequest(request)
     if (!session || !session.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const session = getSessionFromRequest(request)
+    const session = await getSessionFromRequest(request)
     if (!session || !session.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }

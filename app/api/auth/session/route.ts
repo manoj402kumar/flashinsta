@@ -13,10 +13,13 @@ function isValidInstagramToken(token: string | null | undefined): boolean {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = getSessionFromRequest(request)
+    const session = await getSessionFromRequest(request)
 
     if (!session || !session.userId) {
-      return NextResponse.json({ authenticated: false })
+      const res = NextResponse.json({ authenticated: false })
+      clearSessionCookie(res)
+      res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
+      return res
     }
 
     const adminSupabase = getSupabaseAdmin()
@@ -148,7 +151,7 @@ export async function GET(request: NextRequest) {
       } catch {}
     }
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       authenticated: true,
       userId: user.id.toString(),
       username: displayUsername,
@@ -158,6 +161,8 @@ export async function GET(request: NextRequest) {
       igProfilePic: isIgConnected ? igProfilePic : null,
       isIgConnected,
     })
+    res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
+    return res
   } catch (error) {
     return safeErrorResponse(error, "Authentication check failed")
   }

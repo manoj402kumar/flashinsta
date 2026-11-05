@@ -23,10 +23,20 @@ export const SESSION_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000 // 24 hours
 // In-memory set of revoked session IDs (TTL bounded)
 const revokedSids = new Map<string, number>()
 
+// Fast in-memory cache for recent database session validations (1.5s TTL)
+interface SessionValidationCacheEntry {
+  valid: boolean
+  email?: string | null
+  timestamp: number
+}
+const sessionValidationCache = new Map<string, SessionValidationCacheEntry>()
+const VALIDATION_CACHE_TTL_MS = 1500 // 1.5 seconds
+
 export function revokeSessionIdLocally(sid: string, expiresAt?: number): void {
   if (!sid) return
   const ttl = expiresAt || Date.now() + SESSION_MAX_AGE_SECONDS * 1000
   revokedSids.set(sid, ttl)
+  sessionValidationCache.delete(sid)
 }
 
 export function isSessionIdLocallyRevoked(sid: string): boolean {
@@ -142,8 +152,88 @@ export function verifySessionToken(token: string): SessionData | null {
   }
 }
 
-export function getSessionFromRequest(request: NextRequest): SessionData | null {
+/**
+ * Full database-backed cryptographic session verifier.
+ * Checks HMAC signature, expiration, idle timeout, and validates against
+ * persistent server-side revocation in Supabase (session_revoked_at & revoked_sids).
+ */
+export async function verifySessionTokenAsync(token: string): Promise<SessionData | null> {
+  const data = verifySessionToken(token)
+  if (!data || !data.userId) return null
+
+  const cacheKey = data.sid || `${data.userId}:${data.iat}`
+  const cached = sessionValidationCache.get(cacheKey)
+  const now = Date.now()
+  if (cached && now - cached.timestamp < VALIDATION_CACHE_TTL_MS) {
+    if (!cached.valid) return null
+    if (cached.email && !data.email) data.email = cached.email
+    return data
+  }
+
+  try {
+    const { getSupabaseAdmin } = await import("./supabase-admin")
+    const admin = getSupabaseAdmin()
+    const { data: user, error } = await admin
+      .from("users")
+      .select("id, ai_context, username")
+      .eq("id", data.userId)
+      .maybeSingle()
+
+    if (error || !user) {
+      sessionValidationCache.set(cacheKey, { valid: false, timestamp: now })
+      return null
+    }
+
+    let userGoogleEmail: string | null = null
+    if (user.ai_context) {
+      try {
+        const ctx = JSON.parse(user.ai_context)
+        if (ctx.google_email && typeof ctx.google_email === "string") {
+          userGoogleEmail = ctx.google_email.toLowerCase().trim()
+        }
+        const revokedAt = ctx.session_revoked_at ? Number(ctx.session_revoked_at) : 0
+        if (revokedAt && data.iat && data.iat <= revokedAt) {
+          if (data.sid) revokeSessionIdLocally(data.sid)
+          sessionValidationCache.set(cacheKey, { valid: false, timestamp: now })
+          return null
+        }
+        if (data.sid && Array.isArray(ctx.revoked_sids) && ctx.revoked_sids.includes(data.sid)) {
+          revokeSessionIdLocally(data.sid)
+          sessionValidationCache.set(cacheKey, { valid: false, timestamp: now })
+          return null
+        }
+      } catch {}
+    }
+
+    if (!userGoogleEmail && user.username && user.username.includes("@")) {
+      userGoogleEmail = user.username.toLowerCase().trim()
+    }
+
+    if (userGoogleEmail) {
+      data.email = userGoogleEmail
+    }
+
+    sessionValidationCache.set(cacheKey, { valid: true, email: data.email, timestamp: now })
+    return data
+  } catch (err) {
+    console.error("[Session] Database verification error:", err)
+    // Fall back to cryptographic HMAC verification if DB is temporarily unreachable
+    return data
+  }
+}
+
+export async function getSessionFromRequest(request: NextRequest): Promise<SessionData | null> {
   // Support both production __Host- prefix and standard cookie name for backward compatibility
+  const cookieValue =
+    request.cookies.get(PRIMARY_COOKIE_NAME)?.value ||
+    request.cookies.get(FALLBACK_COOKIE_NAME)?.value
+
+  if (!cookieValue) return null
+
+  return verifySessionTokenAsync(cookieValue)
+}
+
+export function getSessionFromRequestSync(request: NextRequest): SessionData | null {
   const cookieValue =
     request.cookies.get(PRIMARY_COOKIE_NAME)?.value ||
     request.cookies.get(FALLBACK_COOKIE_NAME)?.value
@@ -191,4 +281,8 @@ export function clearSessionCookie(response: NextResponse): void {
   if (PRIMARY_COOKIE_NAME !== FALLBACK_COOKIE_NAME) {
     response.cookies.set(FALLBACK_COOKIE_NAME, "", clearOptions)
   }
+
+  // Explicitly clear legacy & environment-variant cookie names with Max-Age=0 and Expires=1970
+  response.cookies.set("insta_session", "", { ...clearOptions, secure: false })
+  response.cookies.set("__Host-insta_session", "", { ...clearOptions, secure: true })
 }

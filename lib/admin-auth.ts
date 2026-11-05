@@ -1,6 +1,6 @@
 import crypto from "crypto"
 import { type NextRequest } from "next/server"
-import { getSessionFromRequest } from "@/lib/session"
+import { getSessionFromRequestSync } from "@/lib/session"
 
 function safeCompare(a: string, b: string): boolean {
   if (!a || !b) return false
@@ -40,7 +40,7 @@ export function isAuthorizedAdmin(request: NextRequest): boolean {
   const adminUserIdsEnv = process.env.ADMIN_USER_IDS
   if (adminUserIdsEnv) {
     const adminUserIds = adminUserIdsEnv.split(",").map((id) => id.trim()).filter(Boolean)
-    const session = getSessionFromRequest(request)
+    const session = getSessionFromRequestSync(request)
     if (session?.userId && adminUserIds.includes(String(session.userId))) {
       return true
     }

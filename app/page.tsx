@@ -13,20 +13,33 @@ export default function Home() {
     // Check if we have an active session or a callback code
     const code = searchParams.get("code")
     const state = searchParams.get("state")
-    const savedId = typeof window !== "undefined" ? localStorage.getItem("ig_user_id") : null
 
     // If this is a Google OAuth callback, let LandingPage handle it
     if (code && (state === "google" || code.startsWith("4/"))) {
       return
     }
 
-    if (code) {
-      // Instagram OAuth code - forward to dashboard for token exchange
-      router.replace("/dashboard?code=" + encodeURIComponent(code))
-    } else if (savedId) {
-      // Active session - redirect directly to dashboard without code param
-      router.replace("/dashboard")
-    }
+    // Verify authenticated state with server before redirecting anywhere
+    fetch("/api/auth/session", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.authenticated && data?.userId) {
+          if (code) {
+            router.replace("/dashboard?code=" + encodeURIComponent(code))
+          } else {
+            router.replace("/dashboard")
+          }
+        } else {
+          // Strictly clear stale IDs from client storage
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("ig_user_id")
+            localStorage.removeItem("ig_username")
+            localStorage.removeItem("ig_profile_pic")
+            localStorage.removeItem("login_email")
+          }
+        }
+      })
+      .catch(() => {})
   }, [searchParams, router])
 
   return <LandingPage />

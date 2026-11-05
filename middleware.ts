@@ -19,7 +19,7 @@ export async function middleware(request: NextRequest) {
   const origin = request.headers.get("origin")
   const path = request.nextUrl.pathname
 
-  // 0. Strictly Protect /dashboard routes: Unauthenticated users are redirected to login immediately
+  // 0. Strictly Protect /dashboard routes: Unauthenticated or revoked users are redirected to login immediately
   if (path === "/dashboard" || path.startsWith("/dashboard/")) {
     const sessionCookie =
       request.cookies.get("__Host-insta_session")?.value ||
@@ -28,40 +28,28 @@ export async function middleware(request: NextRequest) {
     if (!sessionCookie || !sessionCookie.includes(".")) {
       const loginUrl = new URL("/", request.url)
       loginUrl.searchParams.set("auth", "login")
-      return NextResponse.redirect(loginUrl)
+      const redirectRes = NextResponse.redirect(loginUrl)
+      redirectRes.cookies.delete("__Host-insta_session")
+      redirectRes.cookies.delete("insta_session")
+      return redirectRes
     }
 
-    // Cryptographically verify HMAC signature and session validity (prevents forgery)
+    // Cryptographically verify HMAC signature, expiration, and database revocation
     const data = await verifySessionTokenEdge(sessionCookie)
     if (!data || !data.userId) {
       const loginUrl = new URL("/", request.url)
       loginUrl.searchParams.set("auth", "login")
-      return NextResponse.redirect(loginUrl)
+      const redirectRes = NextResponse.redirect(loginUrl)
+      redirectRes.cookies.delete("__Host-insta_session")
+      redirectRes.cookies.delete("insta_session")
+      return redirectRes
     }
 
-    try {
-      // Ensure every user has a completely unique URL reflecting their email/account
-      // Similar to Google Gemini (e.g. ?app=launch&user=...&uid=...&auth_source=email&ws=creator)
-      const currentUrl = request.nextUrl
-      const currentUid = currentUrl.searchParams.get("uid")
-      const currentUser = currentUrl.searchParams.get("user")
-      const expectedUser = data.username || "creator"
-      const expectedUid = String(data.userId)
-
-      if (currentUid !== expectedUid || currentUser !== expectedUser) {
-        const uniqueUrl = new URL(request.url)
-        uniqueUrl.searchParams.set("app", "launch")
-        uniqueUrl.searchParams.set("user", expectedUser)
-        uniqueUrl.searchParams.set("uid", expectedUid)
-        uniqueUrl.searchParams.set("auth_source", "email")
-        uniqueUrl.searchParams.set("ws", "creator")
-        return NextResponse.redirect(uniqueUrl)
-      }
-    } catch {
-      const loginUrl = new URL("/", request.url)
-      loginUrl.searchParams.set("auth", "login")
-      return NextResponse.redirect(loginUrl)
-    }
+    // Enforce strict NO-STORE on dashboard pages so browser BFCache (back button) never leaks session data after logout
+    const response = NextResponse.next()
+    response.headers.set("Cache-Control", "private, no-cache, no-store, max-age=0, must-revalidate")
+    response.headers.set("Pragma", "no-cache")
+    return response
   }
 
   // 1. Check Payload Size for Mutations (exempt /api/upload which enforces its own granular streaming limits up to 50MB)

@@ -7,7 +7,7 @@ import { isRecipientOptedOut } from "@/lib/opt-out"
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getSessionFromRequest(request)
+    const session = await getSessionFromRequest(request)
     if (!session || !session.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }

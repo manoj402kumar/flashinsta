@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
   )
 
   try {
-    const session = getSessionFromRequest(request)
+    const session = await getSessionFromRequest(request)
     if (session?.userId) {
       const admin = getSupabaseAdmin()
       const { data: user } = await admin
@@ -40,5 +40,8 @@ export async function POST(request: NextRequest) {
   }
 
   clearSessionCookie(response)
+  response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
+  response.headers.set("Pragma", "no-cache")
+  response.headers.set("Clear-Site-Data", `"cookies", "storage"`)
   return response
 }

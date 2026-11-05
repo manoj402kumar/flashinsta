@@ -25,7 +25,7 @@ const ALLOWED_EXTENSIONS: Record<string, string[]> = {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = getSessionFromRequest(req)
+    const session = await getSessionFromRequest(req)
     if (!session || !session.userId) {
       return NextResponse.json(
         { ok: false, error: "Unauthorized: Please log in to upload files." },

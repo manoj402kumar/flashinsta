@@ -115,9 +115,7 @@ export function LandingPage() {
 
             if (!data.needsUsername) {
               setShowLoginModal(false)
-              const cleanUser = encodeURIComponent(data.username || "creator")
-              const cleanUid = encodeURIComponent(data.userId)
-              router.replace(`/dashboard?app=launch&user=${cleanUser}&uid=${cleanUid}&auth_source=email&ws=creator`)
+              router.replace("/dashboard")
               return
             }
 
@@ -140,16 +138,6 @@ export function LandingPage() {
         })
     }
   }, [router])
-
-  const handleLogin = () => {
-    const redirectUri = getEffectiveRedirectUri(
-      process.env.NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI,
-      "/api/instagram/callback"
-    )
-    window.location.href = `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID}&redirect_uri=${encodeURIComponent(
-      redirectUri
-    )}&response_type=code&scope=instagram_business_basic%2Cinstagram_business_manage_messages%2Cinstagram_business_manage_comments`
-  }
 
   const handleSetUsernameSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -174,9 +162,7 @@ export function LandingPage() {
         localStorage.setItem("ig_username", data.username)
         if (data.userId) localStorage.setItem("ig_user_id", String(data.userId))
         setShowLoginModal(false)
-        const cleanUser = encodeURIComponent(data.username || chosenUsername.trim() || "creator")
-        const cleanUid = encodeURIComponent(data.userId || googleUser.userId)
-        router.replace(`/dashboard?app=launch&user=${cleanUser}&uid=${cleanUid}&auth_source=email&ws=creator`)
+        router.replace("/dashboard")
       } else {
         setUsernameError(data.error || "Failed to set username")
       }
@@ -188,7 +174,7 @@ export function LandingPage() {
   }
 
   const handleSocialClick = (provider: "google" | "facebook" | "telegram") => {
-    if (provider === "google") {
+    if (provider === "google" || provider === "facebook") {
       const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
       const redirectUri = getEffectiveRedirectUri(process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI, "")
       if (!clientId) {
@@ -203,8 +189,6 @@ export function LandingPage() {
       )}&state=google&access_type=offline&prompt=consent`
 
       window.location.href = authUrl
-    } else if (provider === "facebook") {
-      handleLogin()
     } else if (provider === "telegram") {
       window.open(INSTAGRAM_URL, "_blank")
     }
@@ -803,9 +787,7 @@ export function LandingPage() {
                     type="button"
                     onClick={() => {
                       setShowLoginModal(false)
-                      const cleanUser = encodeURIComponent(chosenUsername.trim() || googleUser?.email.split("@")[0] || "creator")
-                      const cleanUid = encodeURIComponent(googleUser?.userId || "")
-                      router.replace(`/dashboard?app=launch&user=${cleanUser}&uid=${cleanUid}&auth_source=email&ws=creator`)
+                      router.replace("/dashboard")
                     }}
                     className="w-full text-center font-mono-ui text-xs text-muted-foreground hover:text-foreground mt-2 py-1 cursor-pointer transition-colors"
                   >

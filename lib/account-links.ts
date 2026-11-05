@@ -9,6 +9,27 @@ export function isValidInstagramToken(token: string | null | undefined): boolean
 }
 
 /**
+ * Extracts normalized Google email for account ownership verification.
+ */
+export function getUserGoogleEmail(user: {
+  username?: string | null
+  ai_context?: string | null
+}): string | null {
+  if (user?.ai_context) {
+    try {
+      const parsed = JSON.parse(user.ai_context)
+      if (parsed.google_email && typeof parsed.google_email === "string") {
+        return parsed.google_email.toLowerCase().trim()
+      }
+    } catch {}
+  }
+  if (user?.username && user.username.includes("@")) {
+    return user.username.toLowerCase().trim()
+  }
+  return null
+}
+
+/**
  * Extracts verified Instagram account metadata from a users table row.
  * Strictly avoids leaking private tokens or unauthorized fallback data.
  */
@@ -134,21 +155,38 @@ export async function getLinkedAccountIds(userId: string): Promise<string[]> {
 
 /**
  * Retrieves full metadata for all accounts linked to the active session.
+ * Strictly scopes accounts to the authenticated creator's verified Google email.
  */
-export async function getLinkedAccounts(currentUserId: string): Promise<LinkedAccount[]> {
+export async function getLinkedAccounts(currentUserId: string, googleEmail?: string | null): Promise<LinkedAccount[]> {
   const strUserId = String(currentUserId)
-  const allIds = await getLinkedAccountIds(strUserId)
+  const normalizedGoogleEmail = googleEmail?.toLowerCase().trim() || null
+  const allIds = new Set<string>(await getLinkedAccountIds(strUserId))
   const admin = getSupabaseAdmin()
 
-  if (allIds.length === 0) {
-    allIds.push(strUserId)
+  // Find all accounts registered under this exact verified Google email
+  if (normalizedGoogleEmail) {
+    try {
+      const { data: emailAccounts } = await admin
+        .from("users")
+        .select("id, username, ai_context")
+        .or(`username.eq.${normalizedGoogleEmail},ai_context.ilike.%"google_email":"${normalizedGoogleEmail}"%`)
+
+      if (emailAccounts) {
+        for (const acc of emailAccounts) {
+          const accEmail = getUserGoogleEmail(acc)
+          if (accEmail === normalizedGoogleEmail) {
+            allIds.add(String(acc.id))
+          }
+        }
+      }
+    } catch {}
   }
 
-  // Fetch live rows from database for all linked IDs
+  // Fetch live rows from database for all candidate IDs
   const { data: users, error } = await admin
     .from("users")
     .select("id, username, access_token, business_account_id, ai_context, created_at")
-    .in("id", allIds)
+    .in("id", Array.from(allIds))
 
   if (error || !users || users.length === 0) {
     // Return at least the current user profile if query failed
@@ -163,7 +201,15 @@ export async function getLinkedAccounts(currentUserId: string): Promise<LinkedAc
     ]
   }
 
-  const results: LinkedAccount[] = users.map((user) => {
+  // Multi-Tenant Isolation: Only keep accounts that belong to this exact verified Google email
+  const filteredUsers = users.filter((user) => {
+    if (String(user.id) === strUserId) return true
+    if (!normalizedGoogleEmail) return false
+    const accEmail = getUserGoogleEmail(user)
+    return accEmail === normalizedGoogleEmail
+  })
+
+  const results: LinkedAccount[] = filteredUsers.map((user) => {
     const info = extractAccountInfo(user)
     return {
       userId: info.userId,
@@ -198,6 +244,24 @@ export async function linkAccounts(userAId: string, userBId: string): Promise<vo
   if (idA === idB) return
 
   const admin = getSupabaseAdmin()
+
+  // Security check: Verify both accounts belong to the exact same Google email
+  const { data: users } = await admin
+    .from("users")
+    .select("id, username, ai_context")
+    .in("id", [idA, idB])
+
+  if (users && users.length >= 2) {
+    const userA = users.find((u) => String(u.id) === idA)
+    const userB = users.find((u) => String(u.id) === idB)
+    const emailA = userA ? getUserGoogleEmail(userA) : null
+    const emailB = userB ? getUserGoogleEmail(userB) : null
+
+    if (emailA && emailB && emailA !== emailB) {
+      console.warn(`[Security Alert] linkAccounts aborted: cross-account merge rejected between ${idA} (${emailA}) and ${idB} (${emailB})`)
+      return
+    }
+  }
 
   // 1. Gather all existing linked IDs for both accounts to form a unified cluster
   const clusterA = await getLinkedAccountIds(idA)
@@ -343,12 +407,38 @@ export async function unlinkAccount(currentUserId: string, targetUserId: string)
 
 /**
  * Strictly verifies whether current authenticated user is permitted to switch to target account.
+ * Requires that target account belongs to the exact same verified Google email.
  */
-export async function isAccountSwitchAllowed(currentUserId: string, targetUserId: string): Promise<boolean> {
+export async function isAccountSwitchAllowed(
+  currentUserId: string,
+  targetUserId: string,
+  googleEmail?: string | null
+): Promise<boolean> {
   const cur = String(currentUserId)
   const tgt = String(targetUserId)
   if (cur === tgt) return true
 
+  const admin = getSupabaseAdmin()
+
+  // 1. If googleEmail is present, target account MUST belong to this exact Google email
+  if (googleEmail) {
+    const normalized = googleEmail.toLowerCase().trim()
+    const { data: targetUser } = await admin
+      .from("users")
+      .select("id, username, ai_context")
+      .eq("id", tgt)
+      .maybeSingle()
+
+    if (!targetUser) return false
+    const targetEmail = getUserGoogleEmail(targetUser)
+    if (!targetEmail || targetEmail !== normalized) {
+      console.warn(`[Security Alert] Denied switch: caller ${cur} (${normalized}) attempted switch to ${tgt} (${targetEmail})`)
+      return false
+    }
+    return true
+  }
+
+  // 2. Fallback check against linked IDs
   const allowedIds = await getLinkedAccountIds(cur)
   return allowedIds.includes(tgt)
 }

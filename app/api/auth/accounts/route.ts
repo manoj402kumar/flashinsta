@@ -5,12 +5,12 @@ import { safeErrorResponse } from "@/lib/security"
 
 export async function GET(request: NextRequest) {
   try {
-    const session = getSessionFromRequest(request)
+    const session = await getSessionFromRequest(request)
     if (!session || !session.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const accounts = await getLinkedAccounts(session.userId)
+    const accounts = await getLinkedAccounts(session.userId, session.email)
 
     return NextResponse.json({
       accounts,

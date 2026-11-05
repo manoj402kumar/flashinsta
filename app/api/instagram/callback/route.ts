@@ -28,19 +28,20 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { code, userId: explicitUserId } = body
+    const { code } = body
     if (!code) return NextResponse.json({ error: "No code" }, { status: 400 })
 
-    // Check if user is logged in via verified cookie session
-    const session = getSessionFromRequest(request)
-    const sessionUserId = session?.userId ? String(session.userId) : null
-
-    // If both are provided, ensure caller cannot spoof another user's account
-    if (explicitUserId && sessionUserId && String(explicitUserId) !== sessionUserId) {
-      return NextResponse.json({ error: "Forbidden: Account ID mismatch" }, { status: 403 })
+    // Enforce Google Authentication: Standalone Instagram login without Google is strictly forbidden
+    const session = await getSessionFromRequest(request)
+    if (!session || !session.userId) {
+      return NextResponse.json(
+        { error: "Authentication required: Please sign in with your Google account first before connecting an Instagram account." },
+        { status: 401 }
+      )
     }
 
-    const targetUserId = sessionUserId || (explicitUserId ? String(explicitUserId) : null)
+    const targetUserId = String(session.userId)
+    const masterEmail = session.email ? session.email.toLowerCase().trim() : null
 
     // 1. Env Vars
     const clientId = process.env.INSTAGRAM_APP_ID
@@ -119,94 +120,88 @@ export async function POST(request: NextRequest) {
 
     const adminSupabase = getSupabaseAdmin()
 
-    // 5. If we have a logged-in creator, attach Instagram credentials to their existing row
-    if (targetUserId) {
-      console.log(`[Instagram Callback] Linking Instagram @${username} to logged-in user: ${targetUserId}`)
-
-      const { data: existingUser } = await adminSupabase
-        .from("users")
-        .select("ai_context, username")
-        .eq("id", targetUserId)
-        .maybeSingle()
-
-      let existingKnowledge: Record<string, any> = {}
-      try {
-        if (existingUser?.ai_context) existingKnowledge = JSON.parse(existingUser.ai_context)
-      } catch {}
-
-      const updatedContext = {
-        ...existingKnowledge,
-        _instagram: {
-          username,
-          profilePic,
-          connectedAt: new Date().toISOString(),
-          oauth: true,
-        },
-      }
-
-      const { error: linkError } = await adminSupabase
-        .from("users")
-        .update({
-          username,
-          access_token: accessToken,
-          business_account_id: businessAccountId,
-          page_id: businessAccountId,
-          token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
-          ai_context: JSON.stringify(updatedContext),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", targetUserId)
-
-      if (linkError) throw linkError
-
-      const response = NextResponse.json({
-        success: true,
-        username,
-        userId: targetUserId,
-        profilePic,
-        businessAccountId,
-      })
-
-      setSessionCookie(response, {
-        userId: targetUserId,
-        username,
-        profilePic: profilePic || undefined,
-      })
-
-      return response
-    }
-
-    // 6. Fallback: Standalone Instagram login (creates/upserts row with loginUserId)
-    const updates: any = {
-      username,
-      access_token: accessToken,
-      token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
-      updated_at: new Date().toISOString(),
-      business_account_id: businessAccountId,
-      page_id: businessAccountId,
-    }
-
-    const { error: upsertError } = await adminSupabase
+    // 5. Multi-tenant anti-theft check: Verify this Instagram account isn't already claimed by another Google user
+    const { data: existingOwners } = await adminSupabase
       .from("users")
-      .upsert({ id: loginUserId, ...updates }, { onConflict: "id" })
+      .select("id, username, ai_context, business_account_id")
+      .or(`business_account_id.eq.${businessAccountId},id.eq.${loginUserId}`)
 
-    if (upsertError) throw upsertError
+    if (existingOwners && existingOwners.length > 0) {
+      for (const owner of existingOwners) {
+        if (String(owner.id) === targetUserId) continue
+        try {
+          if (owner.ai_context) {
+            const parsed = JSON.parse(owner.ai_context)
+            const ownerEmail = (parsed.google_email || (owner.username?.includes("@") ? owner.username : "")).toLowerCase().trim()
+            if (ownerEmail && masterEmail && ownerEmail !== masterEmail) {
+              return NextResponse.json(
+                {
+                  error: `This Instagram account (@${username}) is already linked to another Google account. Please disconnect it from that account first.`,
+                },
+                { status: 409 }
+              )
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // 6. Attach Instagram credentials strictly to this authenticated Google creator
+    console.log(`[Instagram Callback] Linking Instagram @${username} to Google user: ${targetUserId} (${masterEmail})`)
+
+    const { data: existingUser } = await adminSupabase
+      .from("users")
+      .select("ai_context, username")
+      .eq("id", targetUserId)
+      .maybeSingle()
+
+    let existingKnowledge: Record<string, any> = {}
+    try {
+      if (existingUser?.ai_context) existingKnowledge = JSON.parse(existingUser.ai_context)
+    } catch {}
+
+    const updatedContext = {
+      ...existingKnowledge,
+      google_email: masterEmail || existingKnowledge.google_email,
+      _instagram: {
+        username,
+        profilePic,
+        connectedAt: new Date().toISOString(),
+        oauth: true,
+      },
+    }
+
+    const { error: linkError } = await adminSupabase
+      .from("users")
+      .update({
+        username,
+        access_token: accessToken,
+        business_account_id: businessAccountId,
+        page_id: businessAccountId,
+        token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
+        ai_context: JSON.stringify(updatedContext),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", targetUserId)
+
+    if (linkError) throw linkError
 
     const response = NextResponse.json({
       success: true,
       username,
-      userId: loginUserId,
+      userId: targetUserId,
       profilePic,
       businessAccountId,
     })
 
     setSessionCookie(response, {
+      userId: targetUserId,
       username,
-      userId: loginUserId,
-      profilePic,
+      email: masterEmail || session.email,
+      profilePic: profilePic || undefined,
     })
-    return response
 
+    return response
   } catch (error: any) {
     return safeErrorResponse(error, "Failed to authenticate with Instagram")
   }

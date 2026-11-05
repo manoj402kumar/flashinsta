@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     const adminSupabase = getSupabaseAdmin()
 
-    // 3. Find existing user by email, ai_context, or google_id
+    // 3. Find existing user by verified Google email
     let existingUser: any = null
 
     // A. Check by username === email
@@ -82,16 +82,25 @@ export async function POST(request: NextRequest) {
       existingUser = byUsername
     }
 
-    // B. Check if ai_context already contains this google_email
+    // B. Check if ai_context already contains this google_email (verified strictly with JSON.parse)
     if (!existingUser) {
-      const { data: byContext } = await adminSupabase
+      const { data: candidates } = await adminSupabase
         .from("users")
         .select("id, username, access_token, ai_context")
         .ilike("ai_context", `%"google_email":"${email}"%`)
-        .maybeSingle()
 
-      if (byContext) {
-        existingUser = byContext
+      if (candidates && candidates.length > 0) {
+        for (const candidate of candidates) {
+          try {
+            if (candidate.ai_context) {
+              const parsed = JSON.parse(candidate.ai_context)
+              if (parsed.google_email && parsed.google_email.toLowerCase().trim() === email) {
+                existingUser = candidate
+                break
+              }
+            }
+          } catch {}
+        }
       }
     }
 
@@ -112,6 +121,8 @@ export async function POST(request: NextRequest) {
       ctx.google_email = email
       if (profile.name) ctx.google_name = profile.name
       if (profile.id) ctx.google_id = profile.id
+      // Clear past logout marker to ensure new session is valid
+      delete ctx.session_revoked_at
 
       await adminSupabase
         .from("users")

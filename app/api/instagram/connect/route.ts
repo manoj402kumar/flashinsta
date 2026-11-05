@@ -6,10 +6,12 @@ import { linkAccounts, isValidInstagramToken } from "@/lib/account-links"
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getSessionFromRequest(request)
+    const session = await getSessionFromRequest(request)
     if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json({ error: "Unauthorized: Google session required." }, { status: 401 })
     }
+
+    const masterEmail = session.email ? session.email.toLowerCase().trim() : null
 
     const { data: body, errorResponse } = await parseSafeJson<any>(request)
     if (errorResponse) return errorResponse
@@ -379,6 +381,7 @@ export async function POST(request: NextRequest) {
         pageAccessToken: pageAccessToken || (verifiedVia === "page_token" ? finalToken : undefined),
         manualToken: true,
       },
+      google_email: masterEmail || existingKnowledge.google_email,
     }
 
     // 5. Prepare updates payload
@@ -414,6 +417,20 @@ export async function POST(request: NextRequest) {
         .maybeSingle()
 
       if (existingTarget) {
+        // Multi-tenant check: Verify account is not already claimed by a different Google email
+        try {
+          if (existingTarget.ai_context) {
+            const parsed = JSON.parse(existingTarget.ai_context)
+            const ownerEmail = (parsed.google_email || (existingTarget.username?.includes("@") ? existingTarget.username : "")).toLowerCase().trim()
+            if (ownerEmail && masterEmail && ownerEmail !== masterEmail) {
+              return NextResponse.json(
+                { error: "This Instagram account is already connected to a different Google account. Disconnect it there first." },
+                { status: 409 }
+              )
+            }
+          }
+        } catch {}
+
         const { error: updateError } = await adminSupabase
           .from("users")
           .update(updates)
@@ -490,6 +507,7 @@ export async function POST(request: NextRequest) {
     setSessionCookie(response, {
       userId: finalUserId,
       username: effectiveUsername,
+      email: masterEmail || session.email,
       profilePic: profilePic || undefined,
     })
 
