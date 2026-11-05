@@ -60,10 +60,6 @@ export async function POST(request: NextRequest) {
     }
 
     const email = profile.email.toLowerCase().trim()
-    const rawSuggested = profile.name
-      ? profile.name.toLowerCase().replace(/[^a-z0-9_.]/g, "")
-      : email.split("@")[0].toLowerCase().replace(/[^a-z0-9_.]/g, "")
-    const baseSuggested = rawSuggested.slice(0, 24) || email.split("@")[0].toLowerCase().replace(/[^a-z0-9_.]/g, "")
     const profilePic = profile.picture || null
 
     const adminSupabase = getSupabaseAdmin()
@@ -106,12 +102,10 @@ export async function POST(request: NextRequest) {
 
     let userId: string
     let finalUsername = email
-    let needsUsername = false
 
     if (existingUser) {
       userId = existingUser.id.toString()
       finalUsername = existingUser.username || email
-      needsUsername = finalUsername.includes("@")
 
       // Preserve existing ai_context and record Google metadata
       let ctx: Record<string, any> = {}
@@ -132,29 +126,9 @@ export async function POST(request: NextRequest) {
         })
         .eq("id", existingUser.id)
     } else {
-      // 4. Brand new user — find a unique username that doesn't conflict
-      let candidate = baseSuggested || email.split("@")[0].toLowerCase().replace(/[^a-z0-9_.]/g, "")
-      let attempts = 0
-      finalUsername = candidate
-
-      while (attempts < 10) {
-        const { data: conflict } = await adminSupabase
-          .from("users")
-          .select("id")
-          .eq("username", candidate)
-          .maybeSingle()
-
-        if (!conflict) {
-          finalUsername = candidate
-          break
-        }
-
-        attempts++
-        candidate = `${baseSuggested.slice(0, 20)}_${Math.floor(100 + Math.random() * 900)}`
-      }
-
+      // 4. Brand new user — automatically use email as initial username
       userId = (Date.now() * 10 + Math.floor(Math.random() * 10)).toString()
-      needsUsername = finalUsername.includes("@")
+      finalUsername = email
 
       const newCtx = {
         google_email: email,
@@ -184,10 +158,8 @@ export async function POST(request: NextRequest) {
       success: true,
       email,
       username: finalUsername,
-      suggestedUsername: baseSuggested,
       userId,
       profilePic,
-      needsUsername,
     })
 
     setSessionCookie(response, {
