@@ -1,0 +1,99 @@
+"use client"
+
+import * as React from "react"
+
+type Theme = "light" | "dark" | "system"
+
+type ThemeContextValue = {
+  theme: Theme
+  resolvedTheme: "light" | "dark"
+  setTheme: (theme: Theme) => void
+  toggle: () => void
+}
+
+const ThemeContext = React.createContext<ThemeContextValue | null>(null)
+
+const STORAGE_KEY = "flash-insta-theme"
+
+/**
+ * Apply the resolved theme to <html>. We toggle the .dark class and set
+ * the color-scheme meta so native form controls (scrollbars, inputs) follow.
+ */
+function applyTheme(resolved: "light" | "dark") {
+  const root = document.documentElement
+  root.classList.toggle("dark", resolved === "dark")
+  root.style.colorScheme = resolved
+  root.dataset.theme = resolved
+}
+
+function getSystemTheme(): "light" | "dark" {
+  if (typeof window === "undefined") return "light"
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+}
+
+function resolveTheme(theme: Theme): "light" | "dark" {
+  return theme === "dark" ? "dark" : "light"
+}
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [theme, setThemeState] = React.useState<Theme>("light")
+  const [resolvedTheme, setResolvedTheme] = React.useState<"light" | "dark">("light")
+  const [mounted, setMounted] = React.useState(false)
+
+  // Read manually stored theme on first mount and apply it before paint
+  React.useLayoutEffect(() => {
+    let initial: Theme = "light"
+    try {
+      const stored = window.localStorage.getItem(STORAGE_KEY) as Theme | null
+      if (stored === "light" || stored === "dark") {
+        initial = stored
+      }
+    } catch {
+      // localStorage unavailable — fall back to day mode (light)
+    }
+    const resolved = resolveTheme(initial)
+    applyTheme(resolved)
+    setThemeState(initial)
+    setResolvedTheme(resolved)
+    setMounted(true)
+  }, [])
+
+  // Strictly manual user trigger only: No automatic OS/media-query listeners
+
+  const setTheme = React.useCallback((next: Theme) => {
+    const resolved = resolveTheme(next)
+    applyTheme(resolved)
+    setThemeState(next)
+    setResolvedTheme(resolved)
+    try {
+      window.localStorage.setItem(STORAGE_KEY, next)
+    } catch {}
+  }, [])
+
+  const toggle = React.useCallback(() => {
+    setTheme(resolvedTheme === "dark" ? "light" : "dark")
+  }, [resolvedTheme, setTheme])
+
+  const value = React.useMemo(
+    () => ({ theme, resolvedTheme, setTheme, toggle }),
+    [theme, resolvedTheme, setTheme, toggle],
+  )
+
+  // Avoid hydration mismatch: until mounted, children render with the server theme.
+  // We rely on the no-FOUC inline script in <head> to keep things stable pre-hydration.
+  return (
+    <ThemeContext.Provider value={value}>
+      <span data-theme-mounted={mounted ? "true" : "false"} className="contents">
+        {children}
+      </span>
+    </ThemeContext.Provider>
+  )
+}
+
+export function useTheme(): ThemeContextValue {
+  const ctx = React.useContext(ThemeContext)
+  if (!ctx) {
+    throw new Error("useTheme must be used inside <ThemeProvider>")
+  }
+  return ctx
+}

@@ -1,0 +1,193 @@
+import { type NextRequest, NextResponse } from "next/server"
+import { getSupabaseAdmin } from "@/lib/supabase-admin"
+import { setSessionCookie } from "@/lib/session"
+import { parseSafeJson, safeErrorResponse } from "@/lib/security"
+
+export async function POST(request: NextRequest) {
+  try {
+    const { data: body, errorResponse } = await parseSafeJson<{ code?: string; redirectUri?: string }>(request)
+    if (errorResponse) return errorResponse
+
+    const code = body?.code
+    if (!code) {
+      return NextResponse.json({ error: "Missing authorization code" }, { status: 400 })
+    }
+
+    const clientId = process.env.GOOGLE_CLIENT_ID
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+    const redirectUri =
+      body?.redirectUri ||
+      (process.env.NODE_ENV === "production"
+        ? "https://insta-p8-fawn.vercel.app"
+        : process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI || "http://localhost:3000")
+
+    if (!clientId || !clientSecret || !redirectUri) {
+      return NextResponse.json(
+        { error: "Google OAuth is not properly configured on this server" },
+        { status: 500 }
+      )
+    }
+
+    // 1. Exchange code for access token
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
+    })
+
+    const tokenData = await tokenRes.json()
+    if (!tokenRes.ok || tokenData.error) {
+      return NextResponse.json(
+        { error: tokenData.error_description || "Failed to exchange Google authorization code" },
+        { status: 400 }
+      )
+    }
+
+    // 2. Fetch user profile from Google
+    const userinfoRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    })
+
+    const profile = await userinfoRes.json()
+    if (!profile.email) {
+      return NextResponse.json({ error: "Failed to retrieve Google profile" }, { status: 400 })
+    }
+
+    const email = profile.email.toLowerCase().trim()
+    const rawSuggested = profile.name
+      ? profile.name.toLowerCase().replace(/[^a-z0-9_.]/g, "")
+      : email.split("@")[0].toLowerCase().replace(/[^a-z0-9_.]/g, "")
+    const baseSuggested = rawSuggested.slice(0, 24) || email.split("@")[0].toLowerCase().replace(/[^a-z0-9_.]/g, "")
+    const profilePic = profile.picture || null
+
+    const adminSupabase = getSupabaseAdmin()
+
+    // 3. Find existing user by email, ai_context, or google_id
+    let existingUser: any = null
+
+    // A. Check by username === email
+    const { data: byUsername } = await adminSupabase
+      .from("users")
+      .select("id, username, access_token, ai_context")
+      .eq("username", email)
+      .maybeSingle()
+
+    if (byUsername) {
+      existingUser = byUsername
+    }
+
+    // B. Check if ai_context already contains this google_email
+    if (!existingUser) {
+      const { data: byContext } = await adminSupabase
+        .from("users")
+        .select("id, username, access_token, ai_context")
+        .ilike("ai_context", `%"google_email":"${email}"%`)
+        .maybeSingle()
+
+      if (byContext) {
+        existingUser = byContext
+      }
+    }
+
+    let userId: string
+    let finalUsername = email
+    let needsUsername = false
+
+    if (existingUser) {
+      userId = existingUser.id.toString()
+      finalUsername = existingUser.username || email
+      needsUsername = finalUsername.includes("@")
+
+      // Preserve existing ai_context and record Google metadata
+      let ctx: Record<string, any> = {}
+      try {
+        if (existingUser.ai_context) ctx = JSON.parse(existingUser.ai_context)
+      } catch {}
+      ctx.google_email = email
+      if (profile.name) ctx.google_name = profile.name
+      if (profile.id) ctx.google_id = profile.id
+
+      await adminSupabase
+        .from("users")
+        .update({
+          ai_context: JSON.stringify(ctx),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingUser.id)
+    } else {
+      // 4. Brand new user — find a unique username that doesn't conflict
+      let candidate = baseSuggested || email.split("@")[0].toLowerCase().replace(/[^a-z0-9_.]/g, "")
+      let attempts = 0
+      finalUsername = candidate
+
+      while (attempts < 10) {
+        const { data: conflict } = await adminSupabase
+          .from("users")
+          .select("id")
+          .eq("username", candidate)
+          .maybeSingle()
+
+        if (!conflict) {
+          finalUsername = candidate
+          break
+        }
+
+        attempts++
+        candidate = `${baseSuggested.slice(0, 20)}_${Math.floor(100 + Math.random() * 900)}`
+      }
+
+      userId = (Date.now() * 10 + Math.floor(Math.random() * 10)).toString()
+      needsUsername = finalUsername.includes("@")
+
+      const newCtx = {
+        google_email: email,
+        google_name: profile.name || null,
+        google_id: profile.id || null,
+      }
+
+      const { error: insertError } = await adminSupabase.from("users").insert({
+        id: userId,
+        username: finalUsername,
+        access_token: "GOOGLE_AUTH",
+        token_expires_at: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+        business_account_id: null,
+        page_id: null,
+        ai_context: JSON.stringify(newCtx),
+        updated_at: new Date().toISOString(),
+      })
+
+      if (insertError) {
+        console.error("[Google Auth] Insert user error:", insertError)
+        return safeErrorResponse(insertError, "Failed to create user account")
+      }
+    }
+
+    // 5. Set secure signed session cookie (with sameSite: lax)
+    const response = NextResponse.json({
+      success: true,
+      email,
+      username: finalUsername,
+      suggestedUsername: baseSuggested,
+      userId,
+      profilePic,
+      needsUsername,
+    })
+
+    setSessionCookie(response, {
+      userId,
+      username: finalUsername,
+      email,
+      profilePic,
+    })
+
+    return response
+  } catch (error) {
+    return safeErrorResponse(error, "Failed to process Google login")
+  }
+}

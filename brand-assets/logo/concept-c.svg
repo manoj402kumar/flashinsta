@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>flash-insta — Concept C (Kinetic F-Bolt)</title>
+  <!-- Geometric Letterform Monogram: 'F' carved out of dual-speed lightning chevrons -->
+  <path fill="#000000" fill-rule="evenodd" d="
+    M 80,32
+    L 200,32
+    L 184,68
+    L 120,68
+    L 108,96
+    L 176,96
+    L 160,132
+    L 96,132
+    L 56,224
+    L 90,146
+    L 72,146
+    L 92,96
+    L 80,96
+    Z
+  "/>
+</svg>

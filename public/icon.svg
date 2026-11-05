@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>flash-insta logo</title>
+  <defs>
+    <!-- Crisp Day Mode Card Background -->
+    <radialGradient id="dayApertureBg" cx="50%" cy="40%" r="75%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f8fafc"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Edge-to-edge squircle tile: Zero outer gutter, zero black borders -->
+  <rect width="256" height="256" rx="56" fill="url(#dayApertureBg)"/>
+  <rect x="1" y="1" width="254" height="254" rx="55" fill="none" stroke="#e2e8f0" stroke-width="2"/>
+
+  <!-- Aperture ring in deep slate/ink, centered with balanced padding -->
+  <circle cx="128" cy="128" r="74" fill="none" stroke="#09090b" stroke-width="13" stroke-linecap="round" stroke-dasharray="380 85"/>
+
+  <!-- Electric Amber Orbit Accent Dot -->
+  <circle cx="188" cy="72" r="12" fill="#f59e0b"/>
+
+  <!-- High-Velocity Center Lightning Bolt in Electric Amber -->
+  <path fill="#f59e0b" stroke="#f59e0b" stroke-width="2.5" stroke-linejoin="round" d="
+    M 138,72
+    L 96,132
+    L 124,132
+    L 110,184
+    L 162,120
+    L 132,120
+    Z
+  "/>
+</svg>

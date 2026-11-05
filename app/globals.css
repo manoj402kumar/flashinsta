@@ -1,0 +1,263 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* ============================================================
+   Light theme (Day Mode).
+   Soft, layered Slate canvas with crisp elevated white cards.
+   Eliminates flat blinding pure white glare with gentle contrast.
+   ============================================================ */
+:root {
+  --background: oklch(0.956 0.01 255);          /* soft slate-gray canvas #ecf1f7 */
+  --foreground: oklch(0.18 0.025 260);           /* deep slate ink #0f172a (15:1 contrast) */
+
+  --card: oklch(1 0 0);                         /* elevated crisp white #ffffff (cleanly floats off canvas) */
+  --card-foreground: oklch(0.18 0.025 260);      /* rich readable text */
+
+  --popover: oklch(1 0 0);                      /* pure white popovers */
+  --popover-foreground: oklch(0.18 0.025 260);
+
+  --primary: oklch(0.18 0.025 260);              /* deep obsidian primary buttons */
+  --primary-foreground: oklch(0.99 0 0);        /* white button text */
+
+  --secondary: oklch(0.92 0.014 255);          /* soft clean slate surface #dee5ee */
+  --secondary-foreground: oklch(0.18 0.025 260); /* deep readable text */
+
+  --muted: oklch(0.92 0.014 255);              /* clean muted background */
+  --muted-foreground: oklch(0.44 0.025 260);    /* sharp legible secondary text #475569 (>6:1) */
+
+  --accent: oklch(0.89 0.016 255);             /* active / hover surface #d4dce8 */
+  --accent-foreground: oklch(0.16 0.025 260);
+
+  --destructive: oklch(0.55 0.22 27);           /* vivid crimson #dc2626 */
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --success: oklch(0.56 0.17 145);              /* rich emerald green #16a34a */
+  --success-foreground: oklch(0.99 0 0);
+
+  --warning: oklch(0.68 0.17 75);               /* rich amber #d97706 */
+  --warning-foreground: oklch(0.16 0.025 260);
+
+  --border: oklch(0.85 0.016 255);             /* crisp defined borders #c7ced8 */
+  --input: oklch(0.85 0.016 255);              /* clearly framed form fields */
+  --ring: oklch(0.24 0.025 260);
+
+  /* Signature Brand Gold / Yellow */
+  --accent-yellow: oklch(0.84 0.17 90);         /* vibrant energetic flash-insta gold #facc15 */
+  --accent-yellow-foreground: oklch(0.12 0.01 260);/* ultra-readable deep black text */
+  --accent-yellow-soft: oklch(0.96 0.05 92);    /* warm golden tint for badges and highlights */
+
+  --accent-blue: oklch(0.54 0.21 255);          /* royal electric blue #2563eb */
+  --accent-blue-foreground: oklch(0.99 0 0);
+
+  --accent-pink: oklch(0.58 0.22 355);          /* vivid magenta-pink #db2777 */
+  --accent-pink-foreground: oklch(0.99 0 0);
+
+  --radius: 0.75rem;
+
+  --sidebar: oklch(0.975 0.006 255);            /* distinct structured sidebar #f4f7fb */
+  --sidebar-foreground: oklch(0.18 0.025 260);
+  --sidebar-primary: oklch(0.18 0.025 260);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.92 0.012 255);
+  --sidebar-accent-foreground: oklch(0.18 0.025 260);
+  --sidebar-border: oklch(0.86 0.014 255);      /* distinct sidebar divider */
+  --sidebar-ring: oklch(0.24 0.025 260);
+}
+
+/* ============================================================
+   Dark theme (Night Mode).
+   Rich Charcoal Slate canvas with elevated dark surfaces.
+   Avoids harsh pitch black and preserves comfortable hierarchy.
+   ============================================================ */
+.dark {
+  --background: oklch(0.205 0.014 260);          /* deep charcoal slate canvas #13171e (NOT pitch black) */
+  --foreground: oklch(0.95 0.006 260);           /* clean comfortable off-white text #f1f5f9 */
+
+  --card: oklch(0.255 0.016 260);                /* elevated dark slate card #1e232b (distinct from canvas) */
+  --card-foreground: oklch(0.95 0.006 260);
+
+  --popover: oklch(0.265 0.016 260);             /* elevated popovers #202630 */
+  --popover-foreground: oklch(0.95 0.006 260);
+
+  --primary: oklch(0.92 0.01 260);               /* clean primary button #e2e8f0 */
+  --primary-foreground: oklch(0.18 0.02 260);    /* dark readable text #0f172a */
+
+  --secondary: oklch(0.30 0.018 260);            /* #292e37 surface for buttons & tags */
+  --secondary-foreground: oklch(0.95 0.006 260);
+
+  --muted: oklch(0.28 0.016 260);                /* #252b35 clean muted surface */
+  --muted-foreground: oklch(0.72 0.015 260);     /* readable secondary slate text #94a3b8 */
+
+  --accent: oklch(0.32 0.018 260);               /* active / hover surface #2e3542 */
+  --accent-foreground: oklch(0.98 0 0);
+
+  --destructive: oklch(0.65 0.22 27);            /* bright readable crimson */
+  --destructive-foreground: oklch(0.98 0 0);
+
+  --success: oklch(0.72 0.16 145);
+  --success-foreground: oklch(0.12 0.005 280);
+
+  --warning: oklch(0.85 0.16 88);
+  --warning-foreground: oklch(0.12 0.005 280);
+
+  --border: oklch(0.355 0.016 260);              /* clearly defined slate border #373c44 */
+  --input: oklch(0.355 0.016 260);
+  --ring: oklch(0.85 0.18 95);
+
+  --accent-yellow: oklch(0.88 0.16 95);
+  --accent-yellow-foreground: oklch(0.95 0.05 95); /* readable high-visibility text */
+  --accent-blue: oklch(0.72 0.17 255);
+  --accent-blue-foreground: oklch(0.12 0.005 280);
+  --accent-pink: oklch(0.74 0.2 0);
+  --accent-pink-foreground: oklch(0.12 0.005 280);
+
+  --sidebar: oklch(0.18 0.012 260);              /* #0e1217 structural dark navigation depth */
+  --sidebar-foreground: oklch(0.92 0.008 260);
+  --sidebar-primary: oklch(0.95 0.006 260);
+  --sidebar-primary-foreground: oklch(0.18 0.02 260);
+  --sidebar-accent: oklch(0.28 0.016 260);
+  --sidebar-accent-foreground: oklch(0.98 0 0);
+  --sidebar-border: oklch(0.31 0.014 260);       /* distinct sidebar boundary */
+  --sidebar-ring: oklch(0.85 0.18 95);
+}
+
+@theme inline {
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-serif: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Brand accents — exposed as Tailwind colors so we can use bg-accent-yellow etc. */
+    --color-accent-yellow: var(--accent-yellow);
+    --color-accent-yellow-foreground: var(--accent-yellow-foreground);
+    --color-accent-yellow-soft: var(--accent-yellow-soft);
+    --color-accent-blue: var(--accent-blue);
+    --color-accent-blue-foreground: var(--accent-blue-foreground);
+    --color-accent-pink: var(--accent-pink);
+    --color-accent-pink-foreground: var(--accent-pink-foreground);
+  }
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+body {
+    @apply bg-background text-foreground antialiased;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+/* Subtle surface utilities — theme-aware */
+.glass-panel {
+  @apply bg-card/60 backdrop-blur-md border border-border;
+}
+
+.hover-glow {
+  @apply transition-colors duration-200;
+}
+.hover-glow:hover {
+  @apply bg-accent;
+}
+
+.vercel-row-hover {
+  @apply transition-colors cursor-pointer;
+}
+.vercel-row-hover:hover {
+  background-color: color-mix(in oklch, var(--accent) 60%, transparent);
+}
+
+/* Editorial scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-border rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in oklch, var(--border) 60%, var(--foreground) 40%);
+}
+
+/* Editorial type utilities (shared across app) */
+.font-serif-display {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+.font-mono-ui {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0.04em;
+}
+
+.dashboard-canvas {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.dashboard-canvas [class*="backdrop-"] {
+  backdrop-filter: blur(8px);
+}
+
+/* Ensure borders are visible and well-defined across dark mode */
+.dark .border-border {
+  border-color: var(--border);
+}
+
+.dark .text-muted-foreground {
+  color: var(--muted-foreground);
+}
+
+/* Ensure disabled buttons are visible with clear contrast rather than sinking into dark bg */
+button:disabled {
+  opacity: 0.6 !important;
+}
+
+.dark button:disabled {
+  background-color: oklch(0.24 0.006 280) !important;
+  color: oklch(0.7 0.01 280) !important;
+  border-color: oklch(0.35 0.006 280) !important;
+}

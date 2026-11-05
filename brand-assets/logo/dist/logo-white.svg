@@ -1,0 +1,37 @@
+<svg fill="#ffffff" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><title>flash-insta logo</title>
+  
+  <defs>
+    <!-- Background Radial Gradient for Day Mode -->
+    <radialGradient id="apertureDayBg" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#ffffff"/>
+    </radialGradient>
+    <!-- Soft Subtle Depth Shadow -->
+    <filter id="dayCoreShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#09090b" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <!-- Base Squircle Day Mode -->
+  <rect x="8" y="8" width="496" height="496" rx="108" fill="url(#apertureDayBg)"/>
+  <rect x="8" y="8" width="496" height="496" rx="108" fill="none" stroke="#ffffff" stroke-width="4"/>
+
+  <!-- Minimal Camera Aperture Ring in Deep Slate/Ink -->
+  <g filter="url(#dayCoreShadow)">
+    <circle cx="256" cy="256" r="148" fill="none" stroke="#ffffff" stroke-width="20" stroke-linecap="round" stroke-dasharray="760 170"/>
+
+    <!-- Electric Amber Accent Orbit Dot -->
+    <circle cx="376" cy="144" r="22" fill="#ffffff"/>
+
+    <!-- Center Lightning Strike Blade in Rich Amber -->
+    <path fill="#ffffff" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" d="
+      M 276,146
+      L 194,264
+      L 248,264
+      L 222,364
+      L 326,238
+      L 264,238
+      Z
+    "/>
+  </g>
+</svg>

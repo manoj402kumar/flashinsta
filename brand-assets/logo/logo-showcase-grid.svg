@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <defs>
+    <radialGradient id="masterBg" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#18181b"/>
+      <stop offset="100%" stop-color="#09090b"/>
+    </radialGradient>
+    <linearGradient id="gridSunset" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFDC80"/>
+      <stop offset="25%" stop-color="#FCAF45"/>
+      <stop offset="50%" stop-color="#F77737"/>
+      <stop offset="75%" stop-color="#FD1D1D"/>
+      <stop offset="100%" stop-color="#833AB4"/>
+    </linearGradient>
+    <linearGradient id="amberGoldGrid" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE14D"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    <filter id="glowGrid" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Canvas Background -->
+  <rect width="1080" height="1080" fill="url(#masterBg)"/>
+
+  <!-- Header -->
+  <text x="540" y="80" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="34" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="-0.5">flash-insta · LOGO SELECTION</text>
+  <text x="540" y="115" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" fill="#a1a1aa" text-anchor="middle">Pick your favorite brand identity from the 4 directions below</text>
+
+  <!-- ================= CARD 1: Top-Left ================= -->
+  <g transform="translate(60, 160)">
+    <rect width="460" height="400" rx="36" fill="#121217" stroke="#27272a" stroke-width="2"/>
+    <!-- Icon 1: Speech Bolt -->
+    <g transform="translate(130, 40) scale(0.8)">
+      <path fill-rule="evenodd" fill="#FFE14D" d="
+        M 128,24
+        C 183.228,24 228,68.772 228,124
+        C 228,179.228 183.228,224 128,224
+        C 107.5,224 88.5,218 72,207
+        L 30,222
+        L 45,183
+        C 34.5,166.5 28,146 28,124
+        C 28,68.772 72.772,24 128,24
+        Z
+        M 144,62
+        L 92,134
+        L 126,134
+        L 112,186
+        L 164,114
+        L 130,114
+        Z
+      "/>
+    </g>
+    <text x="230" y="300" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="800" fill="#ffffff" text-anchor="middle">OPTION 1</text>
+    <text x="230" y="332" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="700" fill="#FFE14D" text-anchor="middle">THE SPEECH BOLT</text>
+    <text x="230" y="360" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" fill="#a1a1aa" text-anchor="middle">DM Bubble with Negative-Space Lightning</text>
+  </g>
+
+  <!-- ================= CARD 2: Top-Right ================= -->
+  <g transform="translate(560, 160)">
+    <rect width="460" height="400" rx="36" fill="#121217" stroke="#27272a" stroke-width="2"/>
+    <!-- Icon 2: Neon Prism -->
+    <g transform="translate(145, 50) scale(0.7)">
+      <rect x="0" y="0" width="240" height="240" rx="64" fill="url(#gridSunset)" />
+      <circle cx="188" cy="52" r="14" fill="#ffffff" opacity="0.95"/>
+      <path fill="#ffffff" filter="url(#glowGrid)" d="
+        M 136,36
+        L 76,122
+        L 116,122
+        L 98,198
+        L 168,104
+        L 126,104
+        Z
+      "/>
+    </g>
+    <text x="230" y="300" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="800" fill="#ffffff" text-anchor="middle">OPTION 2</text>
+    <text x="230" y="332" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="700" fill="#FCAF45" text-anchor="middle">THE NEON PRISM</text>
+    <text x="230" y="360" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" fill="#a1a1aa" text-anchor="middle">Official Instagram Sunset + Luminous Bolt</text>
+  </g>
+
+  <!-- ================= CARD 3: Bottom-Left ================= -->
+  <g transform="translate(60, 600)">
+    <rect width="460" height="400" rx="36" fill="#121217" stroke="#27272a" stroke-width="2"/>
+    <!-- Icon 3: Kinetic Monogram -->
+    <g transform="translate(140, 50) scale(0.72)">
+      <path fill="url(#amberGoldGrid)" d="M 0,0 L 210,0 L 175,54 L 0,54 Z" />
+      <path fill="url(#amberGoldGrid)" d="M 0,84 L 145,84 L 110,138 L 0,138 Z" opacity="0.9" />
+      <polygon fill="#ffffff" points="0,0 48,0 48,160 110,160 0,240" />
+    </g>
+    <text x="230" y="300" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="800" fill="#ffffff" text-anchor="middle">OPTION 3</text>
+    <text x="230" y="332" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="700" fill="#F59E0B" text-anchor="middle">THE KINETIC MONOGRAM</text>
+    <text x="230" y="360" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" fill="#a1a1aa" text-anchor="middle">Speed Chevrons + Sculpted 'F' Letterform</text>
+  </g>
+
+  <!-- ================= CARD 4: Bottom-Right ================= -->
+  <g transform="translate(560, 600)">
+    <rect width="460" height="400" rx="36" fill="#121217" stroke="#27272a" stroke-width="2"/>
+    <!-- Icon 4: Aperture Spark -->
+    <g transform="translate(145, 45) scale(0.72)">
+      <circle cx="120" cy="120" r="105" fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round" stroke-dasharray="540 120" />
+      <circle cx="210" cy="40" r="16" fill="#FFE14D" />
+      <path fill="#FFE14D" d="
+        M 135,45
+        L 75,130
+        L 115,130
+        L 95,200
+        L 170,110
+        L 125,110
+        Z
+      "/>
+    </g>
+    <text x="230" y="300" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="800" fill="#ffffff" text-anchor="middle">OPTION 4</text>
+    <text x="230" y="332" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="700" fill="#38BDF8" text-anchor="middle">THE APERTURE SPARK</text>
+    <text x="230" y="360" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" fill="#a1a1aa" text-anchor="middle">Minimalist Optics + Electric Orbit Core</text>
+  </g>
+</svg>
