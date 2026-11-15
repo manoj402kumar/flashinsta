@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <!-- Background Gradients -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0a0c" />
+      <stop offset="50%" stop-color="#09090b" />
+      <stop offset="100%" stop-color="#121217" />
+    </linearGradient>
+
+    <!-- Warm Amber Radial Glow -->
+    <radialGradient id="amberGlow" cx="50%" cy="36%" r="50%">
+      <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.22" />
+      <stop offset="60%" stop-color="#f59e0b" stop-opacity="0.05" />
+      <stop offset="100%" stop-color="#09090b" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Logo Card Shadow -->
+    <filter id="logoShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000000" flood-opacity="0.55" />
+    </filter>
+
+    <!-- Day Squircle Background -->
+    <radialGradient id="dayApertureBg" cx="50%" cy="40%" r="75%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f8fafc"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="1200" height="630" fill="url(#bgGradient)" />
+
+  <!-- Subtle Ambient Glow -->
+  <rect width="1200" height="630" fill="url(#amberGlow)" />
+
+  <!-- Subtle Border Frame -->
+  <rect x="24" y="24" width="1152" height="582" rx="28" fill="none" stroke="#27272a" stroke-width="2" stroke-opacity="0.8" />
+  <rect x="24" y="24" width="1152" height="582" rx="28" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-opacity="0.2" />
+
+  <!-- Center Logo (160x160) at (520, 65) -->
+  <g transform="translate(520, 65)" filter="url(#logoShadow)">
+    <rect width="160" height="160" rx="36" fill="url(#dayApertureBg)"/>
+    <rect x="1" y="1" width="158" height="158" rx="35" fill="none" stroke="#e2e8f0" stroke-width="2"/>
+    <g transform="scale(0.625)">
+      <!-- Aperture ring in deep slate/ink -->
+      <circle cx="128" cy="128" r="74" fill="none" stroke="#09090b" stroke-width="13" stroke-linecap="round" stroke-dasharray="380 85"/>
+      <!-- Electric Amber Orbit Accent Dot -->
+      <circle cx="188" cy="72" r="12" fill="#f59e0b"/>
+      <!-- High-Velocity Center Lightning Bolt in Electric Amber -->
+      <path fill="#f59e0b" stroke="#f59e0b" stroke-width="2.5" stroke-linejoin="round" d="
+        M 138,72
+        L 96,132
+        L 124,132
+        L 110,184
+        L 162,120
+        L 132,120
+        Z
+      "/>
+    </g>
+  </g>
+
+  <!-- Brand Title: flash-insta -->
+  <text x="600" y="282" font-family="'Noto Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif" font-size="52" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="-1">flash-insta</text>
+
+  <!-- Tagline: Instagram Automation for Creators & Brands -->
+  <text x="600" y="335" font-family="'Noto Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif" font-size="27" font-weight="600" fill="#fbbf24" text-anchor="middle" letter-spacing="-0.3">Instagram Automation for Creators &amp; Brands</text>
+
+  <!-- Description / Subtitle -->
+  <text x="600" y="385" font-family="'Noto Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif" font-size="21" font-weight="400" fill="#94a3b8" text-anchor="middle">Turn Instagram comments &amp; DMs into viral growth and sales.</text>
+
+  <!-- Badges Row (Optimized to fit inside 1:1 center crop: x from 325 to 875) -->
+  <!-- Pill 1: 100% Meta Compliant -->
+  <g transform="translate(325, 435)">
+    <rect width="260" height="42" rx="21" fill="#18181b" stroke="#3f3f46" stroke-width="1.5" />
+    <circle cx="24" cy="21" r="5.5" fill="#10b981" />
+    <text x="40" y="27" font-family="'Noto Sans', 'Inter', sans-serif" font-size="14.5" font-weight="600" fill="#e4e4e7">100% Meta API Compliant</text>
+  </g>
+
+  <!-- Pill 2: Auto-Reply Comments & DMs -->
+  <g transform="translate(615, 435)">
+    <rect width="260" height="42" rx="21" fill="#18181b" stroke="#3f3f46" stroke-width="1.5" />
+    <circle cx="24" cy="21" r="5.5" fill="#f59e0b" />
+    <text x="40" y="27" font-family="'Noto Sans', 'Inter', sans-serif" font-size="14.5" font-weight="600" fill="#e4e4e7">Auto-Reply Comments &amp; DMs</text>
+  </g>
+
+  <!-- Domain footer link -->
+  <text x="600" y="535" font-family="'Noto Sans', 'Inter', sans-serif" font-size="17" font-weight="500" fill="#71717a" text-anchor="middle" letter-spacing="0.5">insta-p8-fawn.vercel.app</text>
+</svg>
