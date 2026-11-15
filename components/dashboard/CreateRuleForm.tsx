@@ -480,6 +480,7 @@ export function CreateRuleForm({
   const [initialTitle, setInitialTitle] = useState("Hey there! I'm so happy you're here, thanks so much for your interest 😊")
   const [initialSubtitle, setInitialSubtitle] = useState("Click below and I'll send you the link in just a sec ✨")
   const [initialButtonText, setInitialButtonText] = useState("Send me the link")
+  const [initialImageUrl, setInitialImageUrl] = useState("")
   const [followGateTitle, setFollowGateTitle] = useState("Oh no! It seems you're not following me 👀")
   const [followGateSubtitle, setFollowGateSubtitle] = useState("Follow my profile first, then tap 'I'm following' below to get your link! ✨")
   const [followGateImageUrl, setFollowGateImageUrl] = useState("")
@@ -778,6 +779,8 @@ export function CreateRuleForm({
     if (content.initial_title) setInitialTitle(content.initial_title)
     if (content.initial_subtitle) setInitialSubtitle(content.initial_subtitle)
     if (content.initial_button_text) setInitialButtonText(content.initial_button_text)
+    if (content.initial_image_url) setInitialImageUrl(content.initial_image_url)
+    else if (content.follow_gate?.initial_image_url) setInitialImageUrl(content.follow_gate.initial_image_url)
     
     const editMediaIds = getAutomationMediaIds(editRule)
     if (editMediaIds.length > 0) {
@@ -1102,12 +1105,14 @@ export function CreateRuleForm({
     content.initial_title = initialTitle.trim() || "Hey there! I'm so happy you're here, thanks so much for your interest 😊"
     content.initial_subtitle = initialSubtitle.trim() || "Click below and I'll send you the link in just a sec ✨"
     content.initial_button_text = initialButtonText.trim() || "Send me the link"
+    if (initialImageUrl.trim()) content.initial_image_url = initialImageUrl.trim()
 
     if (checkFollow) {
       content.follow_gate = {
         initial_title: content.initial_title,
         initial_subtitle: content.initial_subtitle,
         initial_button_text: content.initial_button_text,
+        initial_image_url: content.initial_image_url || undefined,
         title: followGateTitle.trim() || "Oh no! It seems you're not following me 👀",
         subtitle: followGateSubtitle.trim() || "Follow my profile first, then tap 'I'm following' below to get your link! ✨",
         image_url: followGateImageUrl.trim() || undefined,
@@ -1119,6 +1124,7 @@ export function CreateRuleForm({
         initial_title: content.initial_title,
         initial_subtitle: content.initial_subtitle,
         initial_button_text: content.initial_button_text,
+        initial_image_url: content.initial_image_url || undefined,
       }
     }
     if (quickReplies.filter((q) => q.title.trim()).length > 0) {
@@ -3146,6 +3152,19 @@ export function CreateRuleForm({
                       Commenter taps this to trigger delivery &amp; open the 24-hour messaging window.
                     </p>
                   </div>
+
+                  <MediaUploadOrUrlInput
+                    mediaType="image"
+                    label="Greeting Card Image (Optional)"
+                    helperText="Upload or paste an image URL displayed on top of the initial greeting card."
+                    value={initialImageUrl}
+                    onChange={(url) => {
+                      setInitialImageUrl(url)
+                      setPhoneScreenMode("dm")
+                      setSimStage(0)
+                    }}
+                    userId={userId}
+                  />
                 </div>
               </div>
 
@@ -4344,6 +4363,11 @@ export function CreateRuleForm({
                         />
                       </div>
                       <div className="w-full max-w-[215px] bg-[#1c1c1e] text-white rounded-2xl rounded-bl-xs p-3 border border-zinc-800 shadow-2xl space-y-2.5 font-sans">
+                        {(initialImageUrl || (type === "card" && cardImage ? cardImage : undefined)) && (
+                          <div className="w-full h-20 rounded-xl overflow-hidden -mt-0.5 mb-1.5 border border-white/5 bg-black/40">
+                            <img src={initialImageUrl || cardImage} alt="Cover" className="w-full h-full object-cover" />
+                          </div>
+                        )}
                         <div>
                           <h5 className="text-[11px] font-bold text-white tracking-tight leading-snug">
                             {initialTitle || "Hey there! Thanks so much for your interest 😊"}
@@ -5206,6 +5230,11 @@ export function CreateRuleForm({
                           />
                         </div>
                         <div className="w-full max-w-[195px] bg-[#1c1c1e] text-white rounded-xl p-2.5 border border-zinc-800 space-y-1.5">
+                          {(initialImageUrl || (type === "card" && cardImage ? cardImage : undefined)) && (
+                            <div className="w-full h-16 rounded-lg overflow-hidden -mt-0.5 mb-1 border border-white/5 bg-black/40">
+                              <img src={initialImageUrl || cardImage} alt="Cover" className="w-full h-full object-cover" />
+                            </div>
+                          )}
                           <h5 className="text-[10px] font-bold leading-tight">{initialTitle || "Hey there!"}</h5>
                           <p className="text-[8px] text-zinc-400 leading-snug">{initialSubtitle}</p>
                           <button

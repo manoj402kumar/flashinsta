@@ -505,39 +505,28 @@ async function processWebhookEntries(entries: any[]) {
             console.log(`[webhook] ⏭️ Comment ${commentId} published over 7 days ago (${commentCreatedTime}). Ineligible for private reply.`)
           }
 
-          // ===== FOLLOWER GATE FOR COMMENTS =====
-          // When follow check is enabled, send the initial "Send me the link" opt-in card as private reply.
-          // Tapping "Send me the link" opens the 24h messaging window, triggering the follow check.
-          if (content.check_follow === true) {
-            console.log(`[webhook] 🔒 Comment follower gate triggered for @${senderId} on rule "${match.name}" (sending initial link card)`)
-            if (replyMode !== "dm_only") {
-              await safeReplyToComment(commentId, getPublicReply())
-            }
-            if (replyMode !== "public_only" && !isSenderOptedOut && isFresh) {
-              const gate = content.follow_gate || {}
-              await safeSendCardDM(
-                { comment_id: commentId },
-                buildInitialLinkRequestCard({
-                  ruleId: match.id,
-                  title: gate.initial_title || "Hey there! I'm so happy you're here, thanks so much for your interest 😊",
-                  subtitle: gate.initial_subtitle || "Click below and I'll send you the link in just a sec ✨",
-                  buttonText: gate.initial_button_text || "Send me the link",
-                  imageUrl: gate.image_url,
-                }),
-              )
-            }
-          } else {
-            // No follower check required — send content immediately
-            if (replyMode !== "dm_only") {
-              await safeReplyToComment(commentId, getPublicReply())
-            }
-            if (replyMode !== "public_only" && !isSenderOptedOut && isFresh) {
-              await safeSendAutomationResponse(
-                { comment_id: commentId },
-                content,
-                { skipTyping: true, variables: { username: commenterUsername } },
-              )
-            }
+          // ===== 2-STEP OPT-IN FOR COMMENTS =====
+          // In Instagram Graph API, the private reply to a comment always sends the initial "Send me the link"
+          // opt-in card. Tapping "Send me the link" opens the 24h messaging window and triggers:
+          //   - Follower Gate verification (if check_follow is true) before delivering payload
+          //   - Direct payload delivery (if check_follow is false)
+          if (replyMode !== "dm_only") {
+            await safeReplyToComment(commentId, getPublicReply())
+          }
+          if (replyMode !== "public_only" && !isSenderOptedOut && isFresh) {
+            const gate = content.follow_gate || {}
+            const initialCardImg = content.initial_image_url || gate.initial_image_url || gate.image_url || content.card?.image_url
+            console.log(`[webhook] 📩 Sending initial "Send me the link" card to @${senderId} on rule "${match.name}" (follow gate: ${content.check_follow ? "ON" : "OFF"})`)
+            await safeSendCardDM(
+              { comment_id: commentId },
+              buildInitialLinkRequestCard({
+                ruleId: match.id,
+                title: gate.initial_title || content.initial_title || "Hey there! I'm so happy you're here, thanks so much for your interest 😊",
+                subtitle: gate.initial_subtitle || content.initial_subtitle || "Click below and I'll send you the link in just a sec ✨",
+                buttonText: gate.initial_button_text || content.initial_button_text || "Send me the link",
+                imageUrl: initialCardImg,
+              }),
+            )
           }
         }
       }
@@ -1094,14 +1083,13 @@ async function processWebhookEntries(entries: any[]) {
                       await sendSenderAction(user.access_token, senderId, "mark_seen")
                     }
 
-                    // ---------- Follow gate for DMs ----------
+                    // ---------- Follow gate & 2-step opt-in for DMs ----------
                     const attemptKey = unlockKey(senderId, match.id)
+                    const gate = content.follow_gate || {}
 
-                    if (content.check_follow === true) {
-                      const gate = content.follow_gate || {}
-
-                      if (isSendLinkEvent) {
-                        // User clicked "Send me the link" (Step 2 in workflow)
+                    if (isSendLinkEvent) {
+                      if (content.check_follow === true) {
+                        // User clicked "Send me the link" (Step 2 in workflow) with Follow Gate enabled
                         const followResult = await safeVerifyFollowStatus(senderId)
 
                         if (followResult.follows === true) {
@@ -1158,7 +1146,30 @@ async function processWebhookEntries(entries: any[]) {
                             }
                           }
                         }
-                      } else if (isUnlockEvent) {
+                      } else {
+                        // User clicked "Send me the link" with Follow Gate disabled -> deliver resource directly!
+                        await clearUnlockAttempts(attemptKey)
+                        console.log(`[webhook] ✅ "Send me the link" tapped by @${senderId} (Follow Gate disabled) — delivering resource directly`)
+                        const result = await safeSendAutomationResponse({ id: senderId }, content)
+                        const conv = await incomingSaved
+                        if (result?.ok && conv) {
+                          try {
+                            await supabase.from("messages").insert({
+                              id: `mid_reply_${Date.now()}_${Math.random()}`,
+                              conversation_id: conv.id,
+                              user_id: user.id,
+                              sender_id: user.business_account_id || String(user.id),
+                              sender_username: getInstagramUsername(user),
+                              content: responsePreviewText(content),
+                              is_from_instagram: false,
+                            })
+                          } catch (e) {
+                            console.error("[webhook] Failed to save outgoing message", e)
+                          }
+                        }
+                      }
+                    } else if (content.check_follow === true) {
+                      if (isUnlockEvent) {
                         // Explicit unlock path: user tapped "I'm following ✅" (Step 3 in workflow)
                         const followResult = await safeVerifyFollowStatus(senderId)
 

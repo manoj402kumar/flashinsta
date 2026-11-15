@@ -276,11 +276,12 @@ export async function POST(request: NextRequest) {
 
               const igUsername = resolvedIgUsername || user.username || "creator"
 
-              // If follow check is enabled, send the initial "Send me the link" card as private reply
+              // 2-Step Opt-in: Always send the initial "Send me the link" card as private reply to comment
               const gate = content.follow_gate || {}
-              const initialCardTitle = (gate.initial_title || "Hey there! I'm so happy you're here, thanks so much for your interest 😊").slice(0, 80)
-              const initialCardSubtitle = (gate.initial_subtitle || "Click below and I'll send you the link in just a sec ✨").slice(0, 80)
-              const initialBtnText = (gate.initial_button_text || "Send me the link").slice(0, 20)
+              const initialCardTitle = (gate.initial_title || content.initial_title || "Hey there! I'm so happy you're here, thanks so much for your interest 😊").slice(0, 80)
+              const initialCardSubtitle = (gate.initial_subtitle || content.initial_subtitle || "Click below and I'll send you the link in just a sec ✨").slice(0, 80)
+              const initialBtnText = (gate.initial_button_text || content.initial_button_text || "Send me the link").slice(0, 20)
+              const initialCardImg = content.initial_image_url || gate.initial_image_url || gate.image_url || content.card?.image_url
 
               const gateElement: any = {
                 title: initialCardTitle,
@@ -289,27 +290,22 @@ export async function POST(request: NextRequest) {
                   { type: "postback", title: initialBtnText, payload: `SEND_LINK_${auto.id}` },
                 ],
               }
-              if (gate.image_url && gate.image_url.startsWith("http")) {
-                gateElement.image_url = gate.image_url
+              if (initialCardImg && initialCardImg.startsWith("http")) {
+                gateElement.image_url = initialCardImg
               }
 
-              const dmPayload = content.check_follow === true
-                ? {
-                    recipient: { comment_id: comment.id },
-                    message: {
-                      attachment: {
-                        type: "template",
-                        payload: {
-                          template_type: "generic",
-                          elements: [gateElement],
-                        },
-                      },
+              const dmPayload = {
+                recipient: { comment_id: comment.id },
+                message: {
+                  attachment: {
+                    type: "template",
+                    payload: {
+                      template_type: "generic",
+                      elements: [gateElement],
                     },
-                  }
-                : {
-                    recipient: { comment_id: comment.id },
-                    message: { text: dmText },
-                  }
+                  },
+                },
+              }
 
               const endpoints = [
                 `https://graph.facebook.com/v24.0/${user.page_id || "me"}/messages`,

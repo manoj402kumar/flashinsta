@@ -196,8 +196,13 @@ export function buildInitialLinkRequestCard(params: {
       { type: "postback", title: buttonTitle, payload: `SEND_LINK_${params.ruleId}` },
     ],
   }
-  if (params.imageUrl && params.imageUrl.startsWith("http")) {
-    card.image_url = params.imageUrl
+  if (params.imageUrl) {
+    if (params.imageUrl.startsWith("http://") || params.imageUrl.startsWith("https://")) {
+      card.image_url = params.imageUrl
+    } else if (params.imageUrl.startsWith("/")) {
+      const base = process.env.NEXT_PUBLIC_APP_URL || "https://insta-p8-fawn.vercel.app"
+      card.image_url = `${base.replace(/\/+$/, "")}${params.imageUrl}`
+    }
   }
   return card
 }
@@ -232,8 +237,13 @@ export function buildFollowGateCard(params: {
       { type: "postback", title: unlockTitle, payload: `UNLOCK_CONTENT_${params.ruleId}` },
     ],
   }
-  if (params.imageUrl && params.imageUrl.startsWith("http")) {
-    card.image_url = params.imageUrl
+  if (params.imageUrl) {
+    if (params.imageUrl.startsWith("http://") || params.imageUrl.startsWith("https://")) {
+      card.image_url = params.imageUrl
+    } else if (params.imageUrl.startsWith("/")) {
+      const base = process.env.NEXT_PUBLIC_APP_URL || "https://insta-p8-fawn.vercel.app"
+      card.image_url = `${base.replace(/\/+$/, "")}${params.imageUrl}`
+    }
   }
   return card
 }
