@@ -39,6 +39,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
+import { getAutomationMediaIds } from "@/lib/automation-media"
 import type { Automation } from "@/lib/types"
 
 type TabType = "all" | "comment" | "story" | "dm"
@@ -48,9 +49,35 @@ type StatusFilterType = "all" | "active" | "paused"
 const rulesCacheByUserId = new Map<string, Automation[]>()
 
 export default function AutomationsPage() {
-  const { userId, username, profilePic, isIgConnected, igUsername, isLoading: sessionLoading } = useInstagramSession()
-  const [rules, setRules] = useState<Automation[]>(() => (userId ? rulesCacheByUserId.get(userId) || [] : []))
-  const [loading, setLoading] = useState(() => !(userId && rulesCacheByUserId.has(userId)))
+  const { userId, username, profilePic, isIgConnected, isLoading: sessionLoading } = useInstagramSession()
+  const [rules, setRules] = useState<Automation[]>(() => {
+    if (!userId) return []
+    if (rulesCacheByUserId.has(userId)) return rulesCacheByUserId.get(userId) || []
+    if (typeof window !== "undefined") {
+      try {
+        const stored = window.sessionStorage.getItem("flashinsta_rules_" + userId)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            rulesCacheByUserId.set(userId, parsed)
+            return parsed
+          }
+        }
+      } catch {}
+    }
+    return []
+  })
+  const [loading, setLoading] = useState(() => {
+    if (!userId) return false
+    if (rulesCacheByUserId.has(userId)) return false
+    if (typeof window !== "undefined") {
+      try {
+        const stored = window.sessionStorage.getItem("flashinsta_rules_" + userId)
+        if (stored && JSON.parse(stored).length > 0) return false
+      } catch {}
+    }
+    return true
+  })
   const [error, setError] = useState("")
   const [query, setQuery] = useState("")
   const [activeTab, setActiveTab] = useState<TabType>("all")
@@ -83,6 +110,11 @@ export default function AutomationsPage() {
       const data = await response.json()
       if (!response.ok || !Array.isArray(data)) throw new Error()
       rulesCacheByUserId.set(userId, data)
+      if (typeof window !== "undefined") {
+        try {
+          window.sessionStorage.setItem("flashinsta_rules_" + userId, JSON.stringify(data))
+        } catch {}
+      }
       setRules(data)
       setError("")
     } catch {
@@ -107,11 +139,11 @@ export default function AutomationsPage() {
     return () => clearInterval(interval)
   }, [userId])
 
-  // Fetch post thumbnails if any rule targets a specific post
+  // Fetch post thumbnails if any rule targets specific media
   useEffect(() => {
     if (!userId || rules.length === 0) return
-    const specificRules = rules.filter((r) => r.specific_media_id)
-    if (specificRules.length === 0) return
+    const hasSpecificTargets = rules.some((rule) => getAutomationMediaIds(rule).length > 0)
+    if (!hasSpecificTargets) return
 
     fetch(`/api/instagram/media?userId=${userId}`)
       .then((res) => res.json())
@@ -339,7 +371,7 @@ export default function AutomationsPage() {
             userId={userId}
             triggerSource={edit ? edit.trigger_source : createSource}
             editRule={edit}
-            creatorUsername={isIgConnected && igUsername ? igUsername : (username || "creator")}
+            creatorUsername={username || "creator"}
             creatorProfilePic={profilePic || null}
             isIgConnected={isIgConnected}
             onSuccess={() => {
@@ -668,7 +700,8 @@ export default function AutomationsPage() {
                 const isDm = rule.trigger_source === "dm"
                 const isDeleting = deletingRuleId === rule.id
                 const isBusy = busyRuleId === rule.id
-                const thumbnail = rule.specific_media_id ? mediaMap[rule.specific_media_id] : null
+                const targetMediaIds = getAutomationMediaIds(rule)
+                const thumbnail = targetMediaIds.map((id) => mediaMap[id]).find(Boolean) || null
 
                 // Response text preview
                 const responseText =
@@ -728,13 +761,17 @@ export default function AutomationsPage() {
                           )}
 
                           {/* Scope Badge */}
-                          {rule.specific_media_id ? (
+                          {targetMediaIds.length > 0 ? (
                             <Badge
                               variant="secondary"
                               className="bg-secondary/70 text-foreground border border-border text-[10px] font-medium gap-1"
                             >
                               <Instagram className="size-3 text-muted-foreground" />
-                              Specific Post
+                              {targetMediaIds.length > 1
+                                ? `${targetMediaIds.length} ${isStory ? "Stories" : "Posts / Reels"}`
+                                : isStory
+                                  ? "Specific Story"
+                                  : "Specific Post"}
                             </Badge>
                           ) : (
                             <Badge
@@ -828,6 +865,11 @@ export default function AutomationsPage() {
                               crossOrigin="anonymous"
                               className="size-full object-cover"
                             />
+                            {targetMediaIds.length > 1 && (
+                              <span className="absolute inset-x-0 bottom-0 bg-black/75 text-center text-[9px] font-bold text-white">
+                                +{targetMediaIds.length - 1}
+                              </span>
+                            )}
                           </div>
                         )}
 

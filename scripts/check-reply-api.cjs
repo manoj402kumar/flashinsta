@@ -2,12 +2,22 @@ const ts = require('typescript')
 const fs = require('node:fs')
 const assert = require('node:assert/strict')
 
-function load(path) {
+const path = require('node:path')
+
+function load(filePath) {
   const module = { exports: {} }
-  const code = ts.transpileModule(fs.readFileSync(path, 'utf8'), {
+  const code = ts.transpileModule(fs.readFileSync(filePath, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText
-  new Function('exports', 'require', 'module', code)(module.exports, require, module)
+  const customRequire = (id) => {
+    if (id.startsWith("./") || id.startsWith("../")) {
+      const resolved = path.resolve(path.dirname(filePath), id)
+      const target = fs.existsSync(resolved + ".ts") ? resolved + ".ts" : resolved
+      return load(target)
+    }
+    return require(id)
+  }
+  new Function('exports', 'require', 'module', code)(module.exports, customRequire, module)
   return module.exports
 }
 

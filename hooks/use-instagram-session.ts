@@ -6,6 +6,8 @@ import type { LinkedAccount } from "@/lib/types"
 
 export interface InstagramStatus {
     connected: boolean
+    username?: string | null
+    email?: string | null
     instagramUsername: string | null
     businessAccountId: string | null
     expiresAt: string | null
@@ -52,10 +54,11 @@ export function useInstagramSession() {
         }
     }, [])
 
-    const fetchIgStatus = useCallback(async (targetUserId: string) => {
+    const fetchIgStatus = useCallback(async (targetUserId: string, options?: { fresh?: boolean }) => {
         try {
             setIgLoading(true)
-            const res = await fetch(`/api/instagram/status?userId=${encodeURIComponent(targetUserId)}`)
+            const fresh = options?.fresh === true
+            const res = await fetch(`/api/instagram/status?userId=${encodeURIComponent(targetUserId)}${fresh ? "&validate=true" : ""}`)
             if (res.ok) {
                 const data: InstagramStatus = await res.json()
                 const connected = Boolean(data.connected)
@@ -65,16 +68,13 @@ export function useInstagramSession() {
                     setIgUsername(handle)
                     setBusinessAccountId(data.businessAccountId || null)
                     setIgExpiresAt(data.expiresAt || null)
+                    if (data.username) {
+                        setUsername(data.username)
+                        if (typeof window !== "undefined") localStorage.setItem("ig_username", data.username)
+                    }
                     if (data.profilePic) {
                         setProfilePic(data.profilePic)
                         if (typeof window !== "undefined") localStorage.setItem("ig_profile_pic", data.profilePic)
-                    } else {
-                        setProfilePic(null)
-                        if (typeof window !== "undefined") localStorage.removeItem("ig_profile_pic")
-                    }
-                    if (handle) {
-                        setUsername(handle)
-                        if (typeof window !== "undefined") localStorage.setItem("ig_username", handle)
                     }
                 } else {
                     setIsIgConnected(false)
@@ -91,24 +91,34 @@ export function useInstagramSession() {
     }, [])
 
     // Primary session loader
-    const verifyAndLoadSession = useCallback(async () => {
+    const verifyAndLoadSession = useCallback(async (options?: { fresh?: boolean }) => {
         if (isAuthenticatingRef.current) return
         isAuthenticatingRef.current = true
 
         try {
-            // Check session with server
-            const res = await fetch("/api/auth/session")
+            // Check session with server (sending stored device token if present)
+            const token = typeof window !== "undefined" ? localStorage.getItem("flashinsta_session_token") : null
+            const headers: HeadersInit = {}
+            if (token) {
+                headers["Authorization"] = `Bearer ${token}`
+                headers["x-session-token"] = token
+            }
+
+            const res = await fetch("/api/auth/session", { headers, cache: "no-store" })
             if (res.ok) {
                 const data = await res.json()
                 if (data?.authenticated && data?.userId) {
                     const sid = String(data.userId)
                     const connected = Boolean(data.isIgConnected)
-                    const sname = (connected && data.igUsername) ? data.igUsername : (data.username || "User")
+                    const sname = data.username || (connected ? data.igUsername : data.email) || "User"
                     const spic = data.profilePic || null
                     const smail = data.email || null
 
                     // Synchronize local storage to current user
                     if (typeof window !== "undefined") {
+                        if (data.token) {
+                            localStorage.setItem("flashinsta_session_token", data.token)
+                        }
                         const cachedId = localStorage.getItem("ig_user_id")
                         if (cachedId && cachedId !== sid) {
                             localStorage.removeItem("ig_user_id")
@@ -119,6 +129,7 @@ export function useInstagramSession() {
                         localStorage.setItem("ig_user_id", sid)
                         localStorage.setItem("ig_username", sname)
                         if (spic) localStorage.setItem("ig_profile_pic", spic)
+                        else localStorage.removeItem("ig_profile_pic")
                         if (smail) localStorage.setItem("login_email", smail)
                     }
 
@@ -129,7 +140,7 @@ export function useInstagramSession() {
                     setIsIgConnected(connected)
                     setIgUsername(connected ? (data.igUsername || sname) : null)
 
-                    void fetchIgStatus(sid)
+                    void fetchIgStatus(sid, options)
                     void fetchAccounts()
                     setIsLoading(false)
                     isAuthenticatingRef.current = false
@@ -139,6 +150,7 @@ export function useInstagramSession() {
 
             // Strictly unauthenticated: clean state
             if (typeof window !== "undefined") {
+                localStorage.removeItem("flashinsta_session_token")
                 localStorage.removeItem("ig_user_id")
                 localStorage.removeItem("ig_username")
                 localStorage.removeItem("ig_profile_pic")
@@ -227,6 +239,9 @@ export function useInstagramSession() {
                     const connected = Boolean(data.isIgConnected)
 
                     if (typeof window !== "undefined") {
+                        if (data.token) {
+                            localStorage.setItem("flashinsta_session_token", data.token)
+                        }
                         localStorage.setItem("ig_user_id", sid)
                         localStorage.setItem("ig_username", sname)
                         if (spic) localStorage.setItem("ig_profile_pic", spic)
@@ -273,20 +288,12 @@ export function useInstagramSession() {
                 body: JSON.stringify({ userId }),
             })
             if (res.ok) {
-                if (typeof window !== "undefined") {
-                    localStorage.removeItem("ig_username")
-                    localStorage.removeItem("ig_profile_pic")
-                }
-                setIsIgConnected(false)
-                setIgUsername(null)
-                setProfilePic(null)
-                setBusinessAccountId(null)
-                setIgExpiresAt(null)
+                await verifyAndLoadSession({ fresh: true })
             }
         } catch (e) {
             console.error("Failed to disconnect Instagram:", e)
         }
-    }, [userId])
+    }, [userId, verifyAndLoadSession])
 
     const logout = async () => {
         try {

@@ -17,9 +17,10 @@ export async function POST(request: NextRequest) {
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET
     const redirectUri =
       body?.redirectUri ||
+      process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI ||
       (process.env.NODE_ENV === "production"
-        ? "https://insta-p8-fawn.vercel.app"
-        : process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI || "http://localhost:3000")
+        ? (process.env.NEXT_PUBLIC_APP_URL || "https://insta-p8-fawn.vercel.app")
+        : "http://localhost:3000")
 
     if (!clientId || !clientSecret || !redirectUri) {
       return NextResponse.json(
@@ -114,6 +115,7 @@ export async function POST(request: NextRequest) {
       } catch {}
       ctx.google_email = email
       if (profile.name) ctx.google_name = profile.name
+      if (profile.picture) ctx.google_picture = profile.picture
       if (profile.id) ctx.google_id = profile.id
       // Clear past logout marker to ensure new session is valid
       delete ctx.session_revoked_at
@@ -133,6 +135,7 @@ export async function POST(request: NextRequest) {
       const newCtx = {
         google_email: email,
         google_name: profile.name || null,
+        google_picture: profile.picture || null,
         google_id: profile.id || null,
       }
 
@@ -153,7 +156,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 5. Set secure signed session cookie (with sameSite: lax)
+    // 5. Set secure signed session cookie (with sameSite: lax and 90-day persistence)
+    const sessionData = {
+      userId,
+      username: finalUsername,
+      email,
+      profilePic,
+    }
+
     const response = NextResponse.json({
       success: true,
       email,
@@ -162,14 +172,19 @@ export async function POST(request: NextRequest) {
       profilePic,
     })
 
-    setSessionCookie(response, {
-      userId,
-      username: finalUsername,
-      email,
-      profilePic,
-    })
+    const token = setSessionCookie(response, sessionData)
 
-    return response
+    // Also return token in body for client device storage resilience
+    return NextResponse.json({
+      success: true,
+      token,
+      email,
+      username: finalUsername,
+      userId,
+      profilePic,
+    }, {
+      headers: response.headers,
+    })
   } catch (error) {
     return safeErrorResponse(error, "Failed to process Google login")
   }

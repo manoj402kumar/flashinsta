@@ -1,5 +1,11 @@
 import crypto from "crypto"
 import type { NextRequest, NextResponse } from "next/server"
+import {
+  SESSION_IDLE_TIMEOUT_MS,
+  SESSION_MAX_AGE_SECONDS,
+} from "./session-policy"
+
+export { SESSION_IDLE_TIMEOUT_MS, SESSION_MAX_AGE_SECONDS } from "./session-policy"
 
 export interface SessionData {
   userId: string
@@ -16,9 +22,7 @@ export const PRIMARY_COOKIE_NAME =
   process.env.NODE_ENV === "production" ? "__Host-insta_session" : "insta_session"
 export const FALLBACK_COOKIE_NAME = "insta_session"
 
-// Sensible lifetimes: 14 days absolute maximum, 24 hours idle timeout
-export const SESSION_MAX_AGE_SECONDS = 14 * 24 * 60 * 60 // 14 days
-export const SESSION_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000 // 24 hours
+// Lifetimes live in session-policy.ts so the edge validator uses the same values.
 
 // In-memory set of revoked session IDs (TTL bounded)
 const revokedSids = new Map<string, number>()
@@ -223,10 +227,16 @@ export async function verifySessionTokenAsync(token: string): Promise<SessionDat
 }
 
 export async function getSessionFromRequest(request: NextRequest): Promise<SessionData | null> {
-  // Support both production __Host- prefix and standard cookie name for backward compatibility
+  const authHeader = request.headers.get("authorization")
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null
+  const customHeaderToken = request.headers.get("x-session-token")?.trim()
+
+  // Support cookies, Authorization: Bearer <token>, and x-session-token header
   const cookieValue =
     request.cookies.get(PRIMARY_COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value
+    request.cookies.get(FALLBACK_COOKIE_NAME)?.value ||
+    bearerToken ||
+    customHeaderToken
 
   if (!cookieValue) return null
 
@@ -234,9 +244,15 @@ export async function getSessionFromRequest(request: NextRequest): Promise<Sessi
 }
 
 export function getSessionFromRequestSync(request: NextRequest): SessionData | null {
+  const authHeader = request.headers.get("authorization")
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null
+  const customHeaderToken = request.headers.get("x-session-token")?.trim()
+
   const cookieValue =
     request.cookies.get(PRIMARY_COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value
+    request.cookies.get(FALLBACK_COOKIE_NAME)?.value ||
+    bearerToken ||
+    customHeaderToken
 
   if (!cookieValue) return null
 
@@ -246,7 +262,7 @@ export function getSessionFromRequestSync(request: NextRequest): SessionData | n
 export function setSessionCookie(
   response: NextResponse,
   data: Omit<SessionData, "sid" | "iat" | "exp" | "lastActive"> & Partial<SessionData>
-): void {
+): string {
   const signedToken = signSessionPayload(data)
   const isProd = process.env.NODE_ENV === "production"
 
@@ -256,6 +272,7 @@ export function setSessionCookie(
     sameSite: "lax" as const,
     path: "/",
     maxAge: SESSION_MAX_AGE_SECONDS,
+    expires: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000),
   }
 
   response.cookies.set(PRIMARY_COOKIE_NAME, signedToken, cookieOptions)
@@ -264,6 +281,8 @@ export function setSessionCookie(
   if (isProd && PRIMARY_COOKIE_NAME !== FALLBACK_COOKIE_NAME) {
     response.cookies.set(FALLBACK_COOKIE_NAME, signedToken, cookieOptions)
   }
+
+  return signedToken
 }
 
 export function clearSessionCookie(response: NextResponse): void {

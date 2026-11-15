@@ -1,12 +1,9 @@
 import { getSupabaseAdmin } from "./supabase-admin"
+import { isValidInstagramToken, resolveIdentity } from "./identity"
+import { refreshInstagramProfileIfStale } from "./instagram-profile"
 import type { LinkedAccount } from "./types"
 
-export function isValidInstagramToken(token: string | null | undefined): boolean {
-  if (!token) return false
-  if (token === "GOOGLE_AUTH" || token === "TEST_TOKEN_NOT_REAL") return false
-  if (token.startsWith("ya29.")) return false
-  return token.length > 20
-}
+export { isValidInstagramToken }
 
 /**
  * Extracts normalized Google email for account ownership verification.
@@ -37,6 +34,7 @@ export function extractAccountInfo(user: {
   id: string | number
   username: string
   access_token: string
+  token_expires_at?: string | null
   business_account_id?: string | number | null
   ai_context?: string | null
 }): {
@@ -47,63 +45,15 @@ export function extractAccountInfo(user: {
   igUsername: string | null
   businessAccountId: string | null
 } {
-  const userId = String(user.id)
-  let igUsername: string | null = null
-  let igProfilePic: string | null = null
-  let hasIgToken = isValidInstagramToken(user.access_token)
-  let businessAccountId: string | null = user.business_account_id ? String(user.business_account_id) : null
-
-  try {
-    if (user.ai_context) {
-      const parsed = JSON.parse(user.ai_context)
-      const candidateToken =
-        parsed._instagram?.accessToken ||
-        parsed._instagram?.pageAccessToken ||
-        parsed._instagram?.userAccessToken
-
-      if (candidateToken && isValidInstagramToken(candidateToken)) {
-        hasIgToken = true
-      }
-
-      if (parsed._instagram?.businessAccountId) {
-        businessAccountId = String(parsed._instagram.businessAccountId)
-      }
-
-      if (hasIgToken) {
-        const rawIgUser = parsed._instagram?.username
-        if (rawIgUser && !rawIgUser.includes("@")) {
-          igUsername = rawIgUser
-        } else if (user.username && !user.username.includes("@")) {
-          igUsername = user.username
-        } else {
-          igUsername = rawIgUser || user.username || null
-        }
-        igProfilePic = parsed._instagram?.profilePic || null
-      }
-    } else if (hasIgToken && user.username && !user.username.includes("@")) {
-      igUsername = user.username
-    }
-  } catch {}
-
-  const isFb = Boolean(user.access_token && user.access_token.startsWith("EAA"))
-  let hasValidIgId = true
-  if (isFb) {
-    const bizId = businessAccountId || ""
-    hasValidIgId = bizId.startsWith("1784")
-  }
-
-  const isIgConnected = Boolean(hasIgToken && igUsername && hasValidIgId)
-  const displayUsername = isIgConnected
-    ? igUsername!
-    : (user.username && !user.username.includes("@") ? user.username : "Account")
+  const identity = resolveIdentity(user)
 
   return {
-    userId,
-    username: displayUsername,
-    profilePic: isIgConnected ? igProfilePic : null,
-    isIgConnected,
-    igUsername: isIgConnected ? igUsername : null,
-    businessAccountId,
+    userId: String(user.id),
+    username: identity.username,
+    profilePic: identity.profilePic,
+    isIgConnected: identity.isIgConnected,
+    igUsername: identity.igUsername,
+    businessAccountId: identity.businessAccountId,
   }
 }
 
@@ -185,7 +135,7 @@ export async function getLinkedAccounts(currentUserId: string, googleEmail?: str
   // Fetch live rows from database for all candidate IDs
   const { data: users, error } = await admin
     .from("users")
-    .select("id, username, access_token, business_account_id, ai_context, created_at")
+    .select("id, username, access_token, token_expires_at, business_account_id, page_id, ai_context, created_at")
     .in("id", Array.from(allIds))
 
   if (error || !users || users.length === 0) {
@@ -209,19 +159,31 @@ export async function getLinkedAccounts(currentUserId: string, googleEmail?: str
     return accEmail === normalizedGoogleEmail
   })
 
-  const results: LinkedAccount[] = filteredUsers.map((user) => {
-    const info = extractAccountInfo(user)
-    return {
-      userId: info.userId,
-      username: info.username,
-      profilePic: info.profilePic,
-      isIgConnected: info.isIgConnected,
-      igUsername: info.igUsername,
-      businessAccountId: info.businessAccountId,
-      isActive: info.userId === strUserId,
-      connectedAt: user.created_at || undefined,
-    }
-  })
+  const results: LinkedAccount[] = await Promise.all(
+    filteredUsers.map(async (user) => {
+      let row = user
+      try {
+        const refreshed = await refreshInstagramProfileIfStale(user)
+        row = {
+          ...user,
+          ai_context: refreshed.aiContext,
+          business_account_id: refreshed.businessAccountId ?? user.business_account_id,
+        }
+      } catch {}
+
+      const info = extractAccountInfo(row)
+      return {
+        userId: info.userId,
+        username: info.username,
+        profilePic: info.profilePic,
+        isIgConnected: info.isIgConnected,
+        igUsername: info.igUsername,
+        businessAccountId: info.businessAccountId,
+        isActive: info.userId === strUserId,
+        connectedAt: user.created_at || undefined,
+      }
+    }),
+  )
 
   // Ensure current active account appears first in list
   results.sort((a, b) => {

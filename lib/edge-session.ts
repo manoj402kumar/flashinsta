@@ -1,3 +1,8 @@
+import {
+  SESSION_IDLE_TIMEOUT_MS,
+  SESSION_MAX_AGE_SECONDS,
+} from "./session-policy"
+
 export interface EdgeSessionData {
   userId: string
   username: string
@@ -100,11 +105,13 @@ export async function verifySessionTokenEdge(token: string): Promise<EdgeSession
 
     const now = Date.now()
 
-    // 1. Enforce absolute maximum lifetime (14 days)
-    if (data.exp && now > data.exp) return null
+    // 1. Enforce absolute maximum lifetime
+    const absoluteDeadline =
+      data.exp || (data.iat ? data.iat + SESSION_MAX_AGE_SECONDS * 1000 : null)
+    if (absoluteDeadline && now > absoluteDeadline) return null
 
-    // 2. Enforce idle timeout (24 hours)
-    if (data.lastActive && now - data.lastActive > 24 * 60 * 60 * 1000) return null
+    // 2. Enforce idle timeout
+    if (data.lastActive && now - data.lastActive > SESSION_IDLE_TIMEOUT_MS) return null
 
     // 3. Local edge revocation check
     if (data.sid && edgeRevokedSids.has(data.sid)) return null

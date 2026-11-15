@@ -21,8 +21,28 @@ export default function InboxPage() {
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center min-h-[50vh]">
-                <Loader2 className="w-8 h-8 text-muted-foreground animate-spin" />
+            <div className="h-[calc(100vh-3rem)] m-6 rounded-xl overflow-hidden border border-border/60 bg-card flex animate-pulse">
+                <div className="w-full md:w-[360px] border-r border-border/60 p-4 space-y-4">
+                    <div className="w-32 h-6 rounded bg-muted/60" />
+                    <div className="w-full h-10 rounded-xl bg-muted/40" />
+                    <div className="space-y-3 pt-2">
+                        {[1, 2, 3, 4, 5].map((i) => (
+                            <div key={`conv-skel-${i}`} className="flex items-center gap-3 p-2">
+                                <div className="w-10 h-10 rounded-full bg-muted/60 shrink-0" />
+                                <div className="space-y-2 flex-1">
+                                    <div className="w-24 h-4 rounded bg-muted/60" />
+                                    <div className="w-36 h-3 rounded bg-muted/30" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className="hidden md:flex flex-1 items-center justify-center p-8 text-muted-foreground/40">
+                    <div className="space-y-3 text-center">
+                        <div className="w-16 h-16 rounded-full bg-muted/40 mx-auto" />
+                        <div className="w-40 h-4 rounded bg-muted/40 mx-auto" />
+                    </div>
+                </div>
             </div>
         )
     }

@@ -2,6 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getSessionFromRequest, setSessionCookie } from "@/lib/session"
 import { getSupabaseAdmin } from "@/lib/supabase-admin"
 import { isAccountSwitchAllowed, extractAccountInfo } from "@/lib/account-links"
+import { formatIdentityHandle } from "@/lib/identity"
+import { refreshInstagramProfileIfStale } from "@/lib/instagram-profile"
 import { parseSafeJson, safeErrorResponse } from "@/lib/security"
 import type { SwitchAccountRequest } from "@/lib/types"
 
@@ -33,7 +35,7 @@ export async function POST(request: NextRequest) {
     const admin = getSupabaseAdmin()
     const { data: targetUser, error: userError } = await admin
       .from("users")
-      .select("id, username, access_token, business_account_id, page_id, ai_context")
+      .select("id, username, access_token, token_expires_at, business_account_id, page_id, ai_context")
       .eq("id", targetUserId)
       .maybeSingle()
 
@@ -45,7 +47,20 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Extract verified account details (never leaking raw secrets)
-    const info = extractAccountInfo(targetUser)
+    const refreshed = await refreshInstagramProfileIfStale(targetUser)
+    const info = extractAccountInfo({
+      ...targetUser,
+      ai_context: refreshed.aiContext,
+      business_account_id: refreshed.businessAccountId ?? targetUser.business_account_id,
+    })
+
+    // 4. Update the cryptographic session cookie to the new account (preserving login email)
+    const newSessionData = {
+      userId: info.userId,
+      username: info.username,
+      email: session.email || undefined,
+      profilePic: info.profilePic || undefined,
+    }
 
     const response = NextResponse.json({
       success: true,
@@ -55,18 +70,24 @@ export async function POST(request: NextRequest) {
       isIgConnected: info.isIgConnected,
       igUsername: info.igUsername,
       businessAccountId: info.businessAccountId,
-      message: `Switched to @${info.username}`,
+      message: `Switched to ${formatIdentityHandle(info.username)}`,
     })
 
-    // 4. Update the cryptographic session cookie to the new account (preserving login email)
-    setSessionCookie(response, {
+    const token = setSessionCookie(response, newSessionData)
+
+    return NextResponse.json({
+      success: true,
+      token,
       userId: info.userId,
       username: info.username,
-      email: session.email || undefined,
-      profilePic: info.profilePic || undefined,
+      profilePic: info.profilePic,
+      isIgConnected: info.isIgConnected,
+      igUsername: info.igUsername,
+      businessAccountId: info.businessAccountId,
+      message: `Switched to ${formatIdentityHandle(info.username)}`,
+    }, {
+      headers: response.headers,
     })
-
-    return response
   } catch (error) {
     return safeErrorResponse(error, "Failed to switch accounts")
   }

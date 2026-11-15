@@ -124,8 +124,8 @@ export async function POST(request: NextRequest) {
         id: `mid_out_${Date.now()}_${Math.random().toString(36).substring(7)}`,
         conversation_id: conv.id,
         user_id: session.userId,
-        sender_id: user.business_account_id,
-        sender_username: user.username,
+        sender_id: user.business_account_id || String(session.userId),
+        sender_username: user.username || "me",
         content: message ? String(message).slice(0, 1000) : "[Attachment]",
         is_from_instagram: false,
       })

@@ -23,14 +23,27 @@ import {
   ArrowRight,
   Camera,
   Instagram,
+  Sparkles,
 } from "lucide-react"
+import { SoundEffects, SoundCue } from "./SoundEffects"
+import { TouchCursor, CursorWaypoint } from "./TouchCursor"
 
 export const COMPOSITION_WIDTH = 395
 export const COMPOSITION_HEIGHT = 685
 export const COMPOSITION_FPS = 30
 export const COMPOSITION_DURATION = 240 // 8 seconds @ 30fps
 
-export function InstagramAutomationComposition() {
+interface InstagramAutomationProps {
+  enableAudio?: boolean
+  enableCursor?: boolean
+  loopFadeEnabled?: boolean
+}
+
+export function InstagramAutomationComposition({
+  enableAudio = false,
+  enableCursor = true,
+  loopFadeEnabled = true,
+}: InstagramAutomationProps) {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
 
@@ -65,27 +78,30 @@ export function InstagramAutomationComposition() {
     config: { damping: 10, mass: 0.4, stiffness: 220 },
   })
 
-  // User Alex's comment appears at frame 52
+  // User Alex's comment appears at frame 52 with elastic overshoot
   const alexCommentAppear = spring({
     frame: frame - 52,
     fps,
-    config: { damping: 12, stiffness: 160 },
+    config: { damping: 11, stiffness: 180 },
   })
 
   // Creator @ee.info public reply underneath at frame 70
   const creatorReplyAppear = spring({
     frame: frame - 70,
     fps,
-    config: { damping: 13, stiffness: 160 },
+    config: { damping: 12, stiffness: 170 },
   })
 
-  // iOS Push Notification drops down at frame 82
+  // iOS Push Notification drops down at frame 82 with physics bounce
   const pushNotificationProgress = spring({
     frame: frame - 82,
     fps,
-    config: { damping: 15, mass: 0.8, stiffness: 130 },
+    config: { damping: 13, mass: 0.7, stiffness: 140 },
   })
-  const pushNotificationY = interpolate(pushNotificationProgress, [0, 1], [-130, 20])
+  const pushNotificationY = interpolate(pushNotificationProgress, [0, 1], [-130, 20], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  })
 
   // Tap ripple at frame 112
   const tapRippleScale = spring({
@@ -94,7 +110,7 @@ export function InstagramAutomationComposition() {
     config: { damping: 12, stiffness: 220 },
   })
 
-  // Screen transition: Reel -> DM Screen (Frames 116 to 132)
+  // Screen transition: Reel -> DM Screen (Frames 116 to 132) with Bezier ease
   const screenSwitchProgress = interpolate(frame, [116, 132], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
@@ -103,29 +119,79 @@ export function InstagramAutomationComposition() {
 
   // Inbound typing indicator in DM (Frames 128 to 142)
   const showDmTyping = frame >= 128 && frame < 144
+  const dot1Y = Math.sin(frame * 0.45) * 3
+  const dot2Y = Math.sin(frame * 0.45 + 1.2) * 3
+  const dot3Y = Math.sin(frame * 0.45 + 2.4) * 3
 
   // Inbound DM message bubble appears at frame 144
   const dmBubbleAppear = spring({
     frame: frame - 144,
     fps,
-    config: { damping: 13, stiffness: 160 },
+    config: { damping: 12, stiffness: 170 },
   })
 
   // Rich link card appears at frame 156
   const richCardAppear = spring({
     frame: frame - 156,
     fps,
-    config: { damping: 13, stiffness: 150 },
+    config: { damping: 12, stiffness: 160 },
   })
 
-  // Seamless loop fade out at the very end (Frames 234 to 240)
-  const loopFade = interpolate(frame, [234, 240], [1, 0], {
+  // Specular sheen highlight across card (Frames 165 to 195)
+  const sheenProgress = interpolate(frame, [165, 195], [-100, 200], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   })
 
+  // CTA button tap at frame 180
+  const ctaTapScale = spring({
+    frame: frame - 180,
+    fps,
+    config: { damping: 10, mass: 0.4, stiffness: 220 },
+  })
+
+  // Seamless loop fade out at the very end (Frames 234 to 240)
+  const loopFade = loopFadeEnabled
+    ? interpolate(frame, [234, 240], [1, 0], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      })
+    : 1
+
   // Audio spinning disc rotation
   const discRotation = (frame * 3) % 360
+
+  // SFX Cue Timeline
+  const soundCues: SoundCue[] = [
+    { from: 15, file: "sfx/whoosh.wav", volume: 0.45 },
+    { from: 24, file: "sfx/type-click.wav", volume: 0.35 },
+    { from: 28, file: "sfx/type-click.wav", volume: 0.35 },
+    { from: 32, file: "sfx/type-click.wav", volume: 0.35 },
+    { from: 36, file: "sfx/type-click.wav", volume: 0.35 },
+    { from: 40, file: "sfx/type-click.wav", volume: 0.35 },
+    { from: 44, file: "sfx/type-click.wav", volume: 0.35 },
+    { from: 50, file: "sfx/tap.wav", volume: 0.65 },
+    { from: 52, file: "sfx/pop.wav", volume: 0.55 },
+    { from: 70, file: "sfx/quick-whoosh.wav", volume: 0.5 },
+    { from: 82, file: "sfx/ios-chime.wav", volume: 0.85 },
+    { from: 114, file: "sfx/tap.wav", volume: 0.65 },
+    { from: 116, file: "sfx/whoosh.wav", volume: 0.55 },
+    { from: 144, file: "sfx/pop.wav", volume: 0.55 },
+    { from: 156, file: "sfx/bass-impact.wav", volume: 0.8 },
+    { from: 180, file: "sfx/tap.wav", volume: 0.65 },
+  ]
+
+  // Virtual Touch Cursor Waypoints
+  const cursorWaypoints: CursorWaypoint[] = [
+    { frame: 14, x: 200, y: 640 },
+    { frame: 20, x: 140, y: 655, isTap: true },
+    { frame: 48, x: 345, y: 655, isTap: true },
+    { frame: 80, x: 300, y: 400 },
+    { frame: 112, x: 197, y: 55, isTap: true },
+    { frame: 140, x: 197, y: 240 },
+    { frame: 178, x: 197, y: 520, isTap: true },
+    { frame: 210, x: 260, y: 640 },
+  ]
 
   return (
     <AbsoluteFill
@@ -137,7 +203,19 @@ export function InstagramAutomationComposition() {
         opacity: loopFade,
       }}
     >
-      {/* iOS Dynamic Island & Status Bar (Edge-to-Edge inside Phone Canvas) */}
+      {/* Audio Engine */}
+      {enableAudio && <SoundEffects cues={soundCues} />}
+
+      {/* Simulated Touch Cursor Pointer */}
+      {enableCursor && (
+        <TouchCursor
+          waypoints={cursorWaypoints}
+          startFrame={14}
+          endFrame={220}
+        />
+      )}
+
+      {/* iOS Dynamic Island & Status Bar */}
       <div
         style={{
           position: "absolute",
@@ -205,7 +283,7 @@ export function InstagramAutomationComposition() {
           opacity: 1 - screenSwitchProgress,
         }}
       >
-        {/* Full Bleed Reel Video Background (Cinematic Creator Aesthetic) */}
+        {/* Full Bleed Reel Video Background */}
         <div
           style={{
             position: "absolute",
@@ -257,7 +335,8 @@ export function InstagramAutomationComposition() {
                 marginBottom: 10,
               }}
             >
-              ⚡ FREE DOWNLOAD
+              <Sparkles size={13} />
+              FREE DOWNLOAD
             </div>
             <h2
               style={{
@@ -310,7 +389,7 @@ export function InstagramAutomationComposition() {
           <Camera size={22} color="#ffffff" />
         </div>
 
-        {/* Real Instagram Right Action Column */}
+        {/* Right Action Column */}
         <div
           style={{
             position: "absolute",
@@ -323,31 +402,25 @@ export function InstagramAutomationComposition() {
             zIndex: 20,
           }}
         >
-          {/* Heart / Like */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
             <Heart size={26} color="#ffffff" strokeWidth={2.2} />
             <span style={{ fontSize: 11, fontWeight: 700, color: "#ffffff" }}>48.2K</span>
           </div>
 
-          {/* Comment */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
             <MessageCircle size={26} color="#ffffff" strokeWidth={2.2} />
             <span style={{ fontSize: 11, fontWeight: 700, color: "#ffffff" }}>1,492</span>
           </div>
 
-          {/* Share */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
             <Send size={24} color="#ffffff" strokeWidth={2.2} style={{ transform: "rotate(-20deg)" }} />
             <span style={{ fontSize: 11, fontWeight: 700, color: "#ffffff" }}>9.1K</span>
           </div>
 
-          {/* Bookmark */}
           <Bookmark size={24} color="#ffffff" strokeWidth={2.2} />
-
-          {/* More Menu */}
           <MoreHorizontal size={22} color="#ffffff" />
 
-          {/* Audio Vinyl Disc (Spinning) */}
+          {/* Audio Vinyl Disc */}
           <div
             style={{
               width: 30,
@@ -366,7 +439,7 @@ export function InstagramAutomationComposition() {
           </div>
         </div>
 
-        {/* Real Instagram Bottom Info & Caption Overlay */}
+        {/* Bottom Info & Caption Overlay */}
         <div
           style={{
             position: "absolute",
@@ -379,7 +452,6 @@ export function InstagramAutomationComposition() {
             gap: 8,
           }}
         >
-          {/* Creator Row */}
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div
               style={{
@@ -427,12 +499,10 @@ export function InstagramAutomationComposition() {
             </button>
           </div>
 
-          {/* Reel Caption */}
           <div style={{ fontSize: 13, lineHeight: 1.4, color: "#ffffff", textShadow: "0 2px 8px rgba(0,0,0,0.8)" }}>
             Comment <strong>&apos;GROW&apos;</strong> to get the 2026 Growth Toolkit in your DMs in 2s flat! 🚀 <span style={{ color: "#93c5fd" }}>#creators #growth</span>
           </div>
 
-          {/* Audio Track Ticker */}
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#ffffff" }}>
             <Music size={12} />
             <span>ee.info · Original audio</span>
@@ -440,7 +510,7 @@ export function InstagramAutomationComposition() {
         </div>
 
         {/* ======================================================= */}
-        {/* REAL INSTAGRAM COMMENT BOTTOM SHEET (SLIDES UP)         */}
+        {/* COMMENT BOTTOM SHEET                                    */}
         {/* ======================================================= */}
         <div
           style={{
@@ -461,12 +531,10 @@ export function InstagramAutomationComposition() {
             boxShadow: "0 -10px 40px rgba(0, 0, 0, 0.8)",
           }}
         >
-          {/* Sheet Drag Handle */}
           <div style={{ display: "flex", justifyContent: "center", paddingTop: 10, paddingBottom: 6 }}>
             <div style={{ width: 40, height: 4, borderRadius: 999, backgroundColor: "rgba(255, 255, 255, 0.3)" }} />
           </div>
 
-          {/* Sheet Header */}
           <div
             style={{
               display: "flex",
@@ -482,7 +550,6 @@ export function InstagramAutomationComposition() {
             <span style={{ fontSize: 12, color: "#94a3b8" }}>Most relevant ▾</span>
           </div>
 
-          {/* Real Comment Feed Stream */}
           <div
             style={{
               flex: 1,
@@ -493,7 +560,7 @@ export function InstagramAutomationComposition() {
               overflow: "hidden",
             }}
           >
-            {/* Existing Follower Comment */}
+            {/* Sarah's Comment */}
             <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
               <div
                 style={{
@@ -523,15 +590,15 @@ export function InstagramAutomationComposition() {
               <Heart size={14} color="#64748b" />
             </div>
 
-            {/* Alex's Comment (Appears at Frame 52) */}
+            {/* Alex's Comment */}
             {frame >= 52 && (
               <div
                 style={{
                   display: "flex",
                   flexDirection: "column",
                   gap: 8,
-                  transform: `scale(${Math.min(1, alexCommentAppear)})`,
-                  opacity: Math.min(1, alexCommentAppear),
+                  transform: `scale(${alexCommentAppear})`,
+                  opacity: Math.min(1, Math.max(0, alexCommentAppear)),
                 }}
               >
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
@@ -564,7 +631,7 @@ export function InstagramAutomationComposition() {
                   <Heart size={14} color="#ef4444" fill="#ef4444" />
                 </div>
 
-                {/* Creator Automated Public Reply (Appears at Frame 70) */}
+                {/* Creator Automated Reply */}
                 {frame >= 70 && (
                   <div
                     style={{
@@ -576,8 +643,8 @@ export function InstagramAutomationComposition() {
                       border: "1px solid rgba(16, 185, 129, 0.35)",
                       padding: "8px 12px",
                       borderRadius: 12,
-                      transform: `scale(${Math.min(1, creatorReplyAppear)})`,
-                      opacity: Math.min(1, creatorReplyAppear),
+                      transform: `scale(${creatorReplyAppear})`,
+                      opacity: Math.min(1, Math.max(0, creatorReplyAppear)),
                     }}
                   >
                     <div
@@ -651,7 +718,6 @@ export function InstagramAutomationComposition() {
               A
             </div>
 
-            {/* Instagram Input Pill Bar */}
             <div
               style={{
                 flex: 1,
@@ -660,7 +726,9 @@ export function InstagramAutomationComposition() {
                 backgroundColor: "rgba(255, 255, 255, 0.08)",
                 borderRadius: 999,
                 padding: "8px 14px",
-                border: "1px solid rgba(255, 255, 255, 0.15)",
+                border: frame >= 20 && frame <= 50 ? "1px solid #ffe14d" : "1px solid rgba(255, 255, 255, 0.15)",
+                boxShadow: frame >= 20 && frame <= 50 ? "0 0 12px rgba(255, 225, 77, 0.2)" : "none",
+                transition: "border 0.2s ease",
               }}
             >
               <div style={{ flex: 1, fontSize: 13, color: "#ffffff", display: "flex", alignItems: "center", fontWeight: 600 }}>
@@ -710,7 +778,6 @@ export function InstagramAutomationComposition() {
           opacity: screenSwitchProgress,
         }}
       >
-        {/* Real Instagram DM Top Navigation */}
         <div
           style={{
             paddingTop: 42,
@@ -798,7 +865,7 @@ export function InstagramAutomationComposition() {
             GROW please! 🔥
           </div>
 
-          {/* Instagram 3-Dot Typing Bubble */}
+          {/* Instagram Dynamic Bouncing 3-Dot Typing Bubble */}
           {showDmTyping && (
             <div
               style={{
@@ -807,13 +874,13 @@ export function InstagramAutomationComposition() {
                 borderRadius: "18px 18px 18px 4px",
                 padding: "10px 16px",
                 display: "flex",
-                gap: 5,
+                gap: 6,
                 alignItems: "center",
               }}
             >
-              <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: "#94a3b8" }} />
-              <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: "#94a3b8" }} />
-              <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: "#94a3b8" }} />
+              <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: "#94a3b8", transform: `translateY(${dot1Y}px)` }} />
+              <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: "#94a3b8", transform: `translateY(${dot2Y}px)` }} />
+              <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: "#94a3b8", transform: `translateY(${dot3Y}px)` }} />
             </div>
           )}
 
@@ -831,8 +898,8 @@ export function InstagramAutomationComposition() {
                 lineHeight: 1.5,
                 color: "#ffffff",
                 border: "1px solid rgba(255, 255, 255, 0.12)",
-                transform: `scale(${Math.min(1, dmBubbleAppear)})`,
-                opacity: Math.min(1, dmBubbleAppear),
+                transform: `scale(${dmBubbleAppear})`,
+                opacity: Math.min(1, Math.max(0, dmBubbleAppear)),
                 boxShadow: "0 6px 16px rgba(0, 0, 0, 0.4)",
               }}
             >
@@ -840,10 +907,11 @@ export function InstagramAutomationComposition() {
             </div>
           )}
 
-          {/* Real Instagram Rich Link Card Component */}
+          {/* Rich Link Card with Specular Shine Effect */}
           {frame >= 156 && (
             <div
               style={{
+                position: "relative",
                 alignSelf: "flex-start",
                 width: "92%",
                 borderRadius: 20,
@@ -851,10 +919,24 @@ export function InstagramAutomationComposition() {
                 border: "1px solid rgba(255, 225, 77, 0.45)",
                 overflow: "hidden",
                 boxShadow: "0 12px 35px rgba(0, 0, 0, 0.6)",
-                transform: `scale(${Math.min(1, richCardAppear)})`,
-                opacity: Math.min(1, richCardAppear),
+                transform: `scale(${richCardAppear})`,
+                opacity: Math.min(1, Math.max(0, richCardAppear)),
               }}
             >
+              {/* Specular Sheen Sweep */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  bottom: 0,
+                  width: 50,
+                  background: "linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent)",
+                  transform: `translateX(${sheenProgress}%) skewX(-20deg)`,
+                  pointerEvents: "none",
+                  zIndex: 10,
+                }}
+              />
+
               <div
                 style={{
                   padding: "14px 16px",
@@ -893,6 +975,7 @@ export function InstagramAutomationComposition() {
               <div style={{ padding: 14 }}>
                 <div
                   style={{
+                    transform: `scale(${frame >= 180 && frame < 188 ? Math.max(0.9, ctaTapScale) : 1})`,
                     backgroundColor: "#ffe14d",
                     color: "#000000",
                     fontWeight: 900,
@@ -904,6 +987,7 @@ export function InstagramAutomationComposition() {
                     justifyContent: "center",
                     gap: 8,
                     boxShadow: "0 4px 14px rgba(255, 225, 77, 0.4)",
+                    transition: "transform 0.05s ease",
                   }}
                 >
                   <span>Download Free Toolkit</span>
@@ -916,7 +1000,7 @@ export function InstagramAutomationComposition() {
       </div>
 
       {/* ========================================================= */}
-      {/* REAL iOS PUSH NOTIFICATION (DROPS DOWN AT FRAME 82)       */}
+      {/* iOS PUSH NOTIFICATION (DROPS DOWN AT FRAME 82)           */}
       {/* ========================================================= */}
       {frame >= 82 && frame <= 130 && (
         <div
@@ -938,7 +1022,6 @@ export function InstagramAutomationComposition() {
             zIndex: 70,
           }}
         >
-          {/* Instagram App Icon */}
           <div
             style={{
               width: 38,

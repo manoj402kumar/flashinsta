@@ -4,13 +4,15 @@ import { useState, useEffect, useMemo, useRef } from "react"
 import {
   Plus, Trash2, Film, Check, MessageCircle, Send, AtSign, Heart,
   MessageSquare, Image as ImageIcon, Timer, Eye, Megaphone, Lock,
-  Link2, Zap, ChevronDown, ChevronRight, ChevronLeft, X, Loader2,
+  Link2, Zap, ChevronDown, ChevronUp, ChevronRight, ChevronLeft, X, Loader2,
   ArrowLeft, Phone, Video, Info, Sparkles, Smile, Camera, Mic, Image as PicIcon,
   Globe, CheckCircle2, Sliders, CheckCheck, Pencil,
   MoreHorizontal, Bookmark, Home, Search, PlusSquare, Music2, VolumeX, Play, RotateCcw, Smartphone
 } from "lucide-react"
 import { TagInput } from "@/components/ui/tag-input"
 import { MediaUploadOrUrlInput } from "@/components/dashboard/MediaUploadOrUrlInput"
+import { getAutomationMediaIds } from "@/lib/automation-media"
+import { formatIdentityHandle } from "@/lib/identity"
 import type { ProButton, QuickReplyOption, Automation } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -30,6 +32,8 @@ interface CreateRuleFormProps {
   creatorProfilePic?: string | null
   isIgConnected?: boolean
 }
+
+type MediaTargetMode = "none" | "all" | "specific"
 
 const DEFAULT_KEYWORD_SUGGESTIONS = ["price", "link", "send"]
 const DEFAULT_PUBLIC_SUGGESTIONS = [
@@ -86,8 +90,50 @@ export function CreateRuleForm({
     return true
   })
   const [storyTriggerType, setStoryTriggerType] = useState<"mention" | "reaction" | "reply">("mention")
-  const [selectedReel, setSelectedReel] = useState<any | null>(null)
-  const [hasSelectedReelOption, setHasSelectedReelOption] = useState<boolean>(false)
+  const [mediaTarget, setMediaTarget] = useState<{ mode: MediaTargetMode; items: any[] }>({
+    mode: "none",
+    items: [],
+  })
+  const selectedMedia = mediaTarget.mode === "specific" ? mediaTarget.items : []
+  const selectedMediaIds = useMemo(
+    () => selectedMedia.map((item: any) => String(item.id)),
+    [selectedMedia],
+  )
+  const [previewMediaIndex, setPreviewMediaIndex] = useState(0)
+  const selectedReel = selectedMedia[previewMediaIndex] || selectedMedia[0] || null
+  const hasSelectedReelOption = mediaTarget.mode !== "none"
+  const [mediaTriggerOverrides, setMediaTriggerOverrides] = useState<Record<string, string>>({})
+  const [isAddingCustomForMedia, setIsAddingCustomForMedia] = useState<string | null>(null)
+  const [newCustomKeyword, setNewCustomKeyword] = useState<string>("")
+  const customOverrideCount = useMemo(() => {
+    return selectedMedia.filter(
+      (m: any) => (mediaTriggerOverrides[String(m.id)] || "").trim().length > 0,
+    ).length
+  }, [selectedMedia, mediaTriggerOverrides])
+
+  /* ---------- Per-Reel Unique Reply Configurations ---------- */
+  interface ReelReplyConfig {
+    replyMode: "both" | "dm_only" | "public_only"
+    publicReply: string
+    type: "text" | "card" | "media"
+    messageText: string
+    cardTitle: string
+    cardSubtitle: string
+    cardImage: string
+    buttons: ProButton[]
+    mediaUrl: string
+    mediaType: "image" | "video" | "audio"
+    quickReplies: QuickReplyOption[]
+  }
+  const [selectedReplyTarget, setSelectedReplyTarget] = useState<"all" | string>("all")
+  const [reelReplyConfigs, setReelReplyConfigs] = useState<Record<string, ReelReplyConfig>>({})
+  const defaultReplyConfigRef = useRef<ReelReplyConfig | null>(null)
+
+  useEffect(() => {
+    if (previewMediaIndex >= selectedMedia.length && selectedMedia.length > 0) {
+      setPreviewMediaIndex(0)
+    }
+  }, [selectedMedia.length, previewMediaIndex])
 
   /* ---------- THEN ---------- */
   const [type, setType] = useState<"text" | "card" | "media">("text")
@@ -177,6 +223,90 @@ export function CreateRuleForm({
   const [delaySeconds, setDelaySeconds] = useState(0)
   const [typingIndicator, setTypingIndicator] = useState(false)
 
+  /* ---------- Reply Config Snapshots & Switching Handlers ---------- */
+  const getCurrentFormConfig = (): ReelReplyConfig => ({
+    replyMode,
+    publicReply,
+    type,
+    messageText,
+    cardTitle,
+    cardSubtitle,
+    cardImage,
+    buttons: buttons.map((b) => ({ ...b })),
+    mediaUrl,
+    mediaType,
+    quickReplies: quickReplies.map((q) => ({ ...q })),
+  })
+
+  const applyConfigToForm = (cfg: ReelReplyConfig) => {
+    setReplyMode(cfg.replyMode)
+    setPublicReply(cfg.publicReply)
+    setType(cfg.type)
+    setMessageText(cfg.messageText)
+    setCardTitle(cfg.cardTitle)
+    setCardSubtitle(cfg.cardSubtitle)
+    setCardImage(cfg.cardImage)
+    setButtons((cfg.buttons || []).map((b) => ({ ...b })))
+    setMediaUrl(cfg.mediaUrl)
+    setMediaType(cfg.mediaType)
+    setQuickReplies((cfg.quickReplies || []).map((q) => ({ ...q })))
+  }
+
+  const handleSelectReplyTarget = (targetId: "all" | string) => {
+    if (targetId === selectedReplyTarget) return
+
+    // 1. Snapshot current active form values to previous target
+    const current = getCurrentFormConfig()
+    if (selectedReplyTarget === "all") {
+      defaultReplyConfigRef.current = current
+    } else {
+      setReelReplyConfigs((prev) => ({
+        ...prev,
+        [selectedReplyTarget]: current,
+      }))
+    }
+
+    // 2. Load the requested target
+    if (targetId === "all") {
+      const defaultCfg = defaultReplyConfigRef.current || current
+      applyConfigToForm(defaultCfg)
+    } else {
+      const targetIdx = selectedMedia.findIndex((m: any) => String(m.id) === targetId)
+      if (targetIdx >= 0) {
+        setPreviewMediaIndex(targetIdx)
+      }
+
+      if (reelReplyConfigs[targetId]) {
+        applyConfigToForm(reelReplyConfigs[targetId])
+      } else {
+        // Clone from default template so creator starts with a clean baseline
+        const baseCfg = defaultReplyConfigRef.current || current
+        const cloned: ReelReplyConfig = {
+          ...baseCfg,
+          buttons: (baseCfg.buttons || []).map((b) => ({ ...b })),
+          quickReplies: (baseCfg.quickReplies || []).map((q) => ({ ...q })),
+        }
+        setReelReplyConfigs((prev) => ({
+          ...prev,
+          [targetId]: cloned,
+        }))
+        applyConfigToForm(cloned)
+      }
+    }
+
+    setSelectedReplyTarget(targetId)
+  }
+
+  // Auto-revert target to "all" if selected post is removed in Step 1
+  useEffect(() => {
+    if (selectedReplyTarget !== "all" && !selectedMedia.some((m: any) => String(m.id) === selectedReplyTarget)) {
+      setSelectedReplyTarget("all")
+      if (defaultReplyConfigRef.current) {
+        applyConfigToForm(defaultReplyConfigRef.current)
+      }
+    }
+  }, [selectedMedia, selectedReplyTarget])
+
   /* ---------- LIVE PHONE PREVIEW & SIMULATOR STATES ---------- */
   const [phoneScreenMode, setPhoneScreenMode] = useState<"content" | "dm">(
     editRule?.trigger_source === "dm" || initialSource === "dm" ? "dm" : "content"
@@ -261,9 +391,16 @@ export function CreateRuleForm({
       ? triggers.join(", ")
       : ""
 
+  const activeReelId = selectedReel ? String(selectedReel.id) : null
+  const activeReelCustomKw = activeReelId ? (mediaTriggerOverrides[activeReelId] || "").trim() : ""
+  const activeCardTitle = cardTitle
+  const activeMessageText = messageText
+  const activeButtons = buttons
+
   const liveCommentText =
     simActiveTriggerText ||
     simInputText ||
+    (activeReelCustomKw ? activeReelCustomKw.split(",")[0].trim() : null) ||
     currentTriggerDraft ||
     (triggers.length > 0 ? triggers[0] : (commentMatchAll ? "Love this! Tell me more ✨" : "link"))
 
@@ -272,7 +409,8 @@ export function CreateRuleForm({
   const activeKeywords = triggers.map((t) => t.toLowerCase().trim()).filter(Boolean)
   const isLiveMatch =
     commentMatchAll ||
-    (activeKeywords.length === 0 && !currentTriggerDraft) ||
+    Boolean(activeReelCustomKw && liveCommentText.toLowerCase().includes(activeReelCustomKw.toLowerCase())) ||
+    (activeKeywords.length === 0 && !currentTriggerDraft && !activeReelCustomKw) ||
     (currentTriggerDraft && liveCommentText.toLowerCase().includes(currentTriggerDraft.toLowerCase())) ||
     activeKeywords.some((kw) => liveCommentText.toLowerCase().includes(kw))
 
@@ -365,6 +503,7 @@ export function CreateRuleForm({
     }
     return "/mock/creator_avatar_hd.jpg"
   })
+  const creatorHandle = formatIdentityHandle(creatorUsername, "creator")
 
   const selectedPostMedia = selectedReel
     ? (selectedReel.thumbnail_url || selectedReel.image_url || selectedReel.media_url || selectedReel.cover_url || null)
@@ -377,6 +516,7 @@ export function CreateRuleForm({
   useEffect(() => {
     if (propUsername) setCreatorUsername(propUsername.replace(/^@/, ''))
     if (propProfilePic) setCreatorProfilePic(propProfilePic)
+    else if (propProfilePic === null) setCreatorProfilePic("/mock/creator_avatar_hd.jpg")
   }, [propUsername, propProfilePic])
 
   useEffect(() => {
@@ -392,10 +532,13 @@ export function CreateRuleForm({
         if (data.profilePic) {
           setCreatorProfilePic(data.profilePic)
           if (typeof window !== "undefined") localStorage.setItem("ig_profile_pic", data.profilePic)
+        } else if (data.connected === false) {
+          setCreatorProfilePic("/mock/creator_avatar_hd.jpg")
         }
-        if (data.instagramUsername) {
-          setCreatorUsername(data.instagramUsername.replace(/^@/, ''))
-          if (typeof window !== "undefined") localStorage.setItem("ig_username", data.instagramUsername)
+        const displayName = data.instagramUsername || data.username
+        if (displayName) {
+          setCreatorUsername(String(displayName).replace(/^@/, ''))
+          if (typeof window !== "undefined") localStorage.setItem("ig_username", String(displayName))
         }
       })
       .catch(() => {})
@@ -441,7 +584,7 @@ export function CreateRuleForm({
     setSimActiveTriggerText(raw)
 
     if (isMatch) {
-      toast.success(`Trigger matched! @${creatorUsername || "creator"} sent public reply & preparing DM ✨`)
+      toast.success(`Trigger matched! ${creatorHandle} sent public reply & preparing DM ✨`)
       if (replyMode !== "public_only") {
         const notifBody = checkFollow
           ? (initialTitle.slice(0, 50) + "...")
@@ -449,7 +592,7 @@ export function CreateRuleForm({
 
         setSimNotification({
           visible: true,
-          title: `@${creatorUsername || "creator"}`,
+          title: `${creatorHandle}`,
           body: notifBody,
         })
 
@@ -471,7 +614,7 @@ export function CreateRuleForm({
     toast.success(`Story ${interaction.type} sent! Opening automated DM...`)
     setSimNotification({
       visible: true,
-      title: `@${creatorUsername || "creator"}`,
+      title: `${creatorHandle}`,
       body: checkFollow ? (initialTitle.slice(0, 50) + "...") : (messageText || cardTitle || "Sent you a message!"),
     })
     setTimeout(() => {
@@ -504,8 +647,37 @@ export function CreateRuleForm({
   }
 
   const [saving, setSaving] = useState(false)
-  const [reels, setReels] = useState<any[]>(() => (userId ? clientReelsCacheByUserId.get(userId) || [] : []))
-  const [loadingReels, setLoadingReels] = useState(() => !(userId && clientReelsCacheByUserId.has(userId)))
+  const [reels, setReels] = useState<any[]>(() => {
+    if (!userId) return []
+    if (clientReelsCacheByUserId.has(userId)) return clientReelsCacheByUserId.get(userId) || []
+    if (typeof window !== "undefined") {
+      try {
+        const stored = window.sessionStorage.getItem("flashinsta_reels_" + userId)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            clientReelsCacheByUserId.set(userId, parsed)
+            return parsed
+          }
+        }
+      } catch {}
+    }
+    return []
+  })
+  const [loadingReels, setLoadingReels] = useState(() => {
+    if (!userId) return false
+    if (clientReelsCacheByUserId.has(userId)) return false
+    if (typeof window !== "undefined") {
+      try {
+        const stored = window.sessionStorage.getItem("flashinsta_reels_" + userId)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          if (Array.isArray(parsed) && parsed.length > 0) return false
+        }
+      } catch {}
+    }
+    return true
+  })
 
   const fetchReels = (force = false) => {
     if (!userId) return
@@ -518,10 +690,20 @@ export function CreateRuleForm({
         setReels(list)
         if (list.length > 0) {
           clientReelsCacheByUserId.set(userId, list)
-          setSelectedReel((prev: any) => {
-            if (!prev?.id) return prev
-            const match = list.find((m: any) => m.id === prev.id)
-            return match || prev
+          if (typeof window !== "undefined") {
+            try {
+              window.sessionStorage.setItem("flashinsta_reels_" + userId, JSON.stringify(list))
+            } catch {}
+          }
+          setMediaTarget((prev) => {
+            if (prev.mode !== "specific") return prev
+            return {
+              mode: "specific",
+              items: prev.items.map((item: any) => {
+                const match = list.find((media: any) => String(media.id) === String(item.id))
+                return match || item
+              }),
+            }
           })
         }
       })
@@ -597,13 +779,23 @@ export function CreateRuleForm({
     if (content.initial_subtitle) setInitialSubtitle(content.initial_subtitle)
     if (content.initial_button_text) setInitialButtonText(content.initial_button_text)
     
-    if (editRule.specific_media_id) {
-      setSelectedReel({ id: editRule.specific_media_id, caption: "Selected post" })
-      setHasSelectedReelOption(true)
+    const editMediaIds = getAutomationMediaIds(editRule)
+    if (editMediaIds.length > 0) {
+      const cachedReels = userId ? clientReelsCacheByUserId.get(userId) || [] : []
+      setMediaTarget({
+        mode: "specific",
+        items: editMediaIds.map((id) => {
+          const cached = cachedReels.find((media: any) => String(media.id) === String(id))
+          return cached || {
+            id,
+            caption: editRule.trigger_source === "story" ? "Selected story" : "Selected post",
+          }
+        }),
+      })
     } else {
-      setHasSelectedReelOption(true)
+      setMediaTarget({ mode: "all", items: [] })
     }
-  }, [editRule])
+  }, [editRule, userId])
 
   /* Auto name: Only suggest an initial name if the user hasn't manually edited/cleared it */
   useEffect(() => {
@@ -651,18 +843,48 @@ export function CreateRuleForm({
     }
   }
 
+  /* Multi-select helpers for post/reel/story targeting */
+  const toggleMediaTarget = (item: any) => {
+    setMediaTarget((prev) => {
+      const current = prev.mode === "specific" ? prev.items : []
+      const exists = current.some((entry) => String(entry.id) === String(item.id))
+      const nextItems = exists
+        ? current.filter((entry) => String(entry.id) !== String(item.id))
+        : [...current, item]
+      return nextItems.length > 0
+        ? { mode: "specific", items: nextItems }
+        : { mode: "none", items: [] }
+    })
+    setPhoneScreenMode("content")
+    setCommentSheetOpen(false)
+  }
+
+  const toggleAllMediaTarget = () => {
+    setMediaTarget((prev) =>
+      prev.mode === "all" ? { mode: "none", items: [] } : { mode: "all", items: [] },
+    )
+    setPhoneScreenMode("content")
+    setCommentSheetOpen(false)
+  }
+
   /* Keyword suggestions helpers (Card 2) */
   const handleAddKeywordSuggestion = () => {
     const trimmed = newKeywordInput.trim().toLowerCase()
     if (trimmed && keywordSuggestions.length < 4 && !keywordSuggestions.includes(trimmed)) {
       setKeywordSuggestions([...keywordSuggestions, trimmed])
+      setTriggers([...triggers.filter((t) => t !== trimmed), trimmed])
+      setCommentMatchAll(false)
       setNewKeywordInput("")
       setIsAddingKeyword(false)
     }
   }
 
   const handleDeleteKeywordSuggestion = (index: number) => {
+    const deletedKw = keywordSuggestions[index]?.toLowerCase()
     setKeywordSuggestions(keywordSuggestions.filter((_, i) => i !== index))
+    if (deletedKw && triggers.includes(deletedKw)) {
+      setTriggers(triggers.filter((t) => t !== deletedKw))
+    }
     if (editingKeywordIndex === index) setEditingKeywordIndex(null)
   }
 
@@ -674,9 +896,13 @@ export function CreateRuleForm({
   const handleSaveEditKeyword = (index: number) => {
     const trimmed = editingKeywordText.trim().toLowerCase()
     if (trimmed) {
+      const prev = keywordSuggestions[index]?.toLowerCase()
       const next = [...keywordSuggestions]
       next[index] = trimmed
       setKeywordSuggestions(next)
+      if (prev && triggers.includes(prev)) {
+        setTriggers(triggers.map((t) => (t === prev ? trimmed : t)))
+      }
     }
     setEditingKeywordIndex(null)
   }
@@ -760,10 +986,9 @@ export function CreateRuleForm({
             : (mediaUrl.trim().length > 0 || messageText.trim().length > 0))
   const canSave = whenValid && thenValid && name.trim().length > 0
 
-  const sourceLabel = triggerSource === "comment" ? "comment" : triggerSource === "dm" ? "direct message" : "story"
   const validationHint = !whenValid
     ? (triggerSource === "comment" && !hasSelectedReelOption
-        ? "Select a reel/post or 'All Posts & Reels' above to continue"
+        ? "Select one or more posts or 'All Posts & Reels' above to continue"
         : triggerSource === "comment" && !commentMatchAll && triggers.length === 0
           ? "Add at least one trigger keyword or select 'Every comment' above"
           : needsKeywords && triggers.length === 0
@@ -780,7 +1005,13 @@ export function CreateRuleForm({
   /* Plain-language summary sentence */
   const summary = useMemo(() => {
     const isReplyAll = triggerSource === "comment" && commentMatchAll
-    const targetDesc = selectedReel ? "your target reel / post" : "your reel or post"
+    const targetCount = selectedMedia.length
+    const targetDesc =
+      targetCount > 1
+        ? `your ${targetCount} selected ${triggerSource === "story" ? "stories" : "posts"}`
+        : targetCount === 1
+          ? triggerSource === "story" ? "your target story" : "your target reel / post"
+          : triggerSource === "story" ? "your story" : "your reel or post"
     const who =
       triggerSource === "comment"
         ? isReplyAll
@@ -797,7 +1028,57 @@ export function CreateRuleForm({
           : type === "media" ? `send them ${mediaType === "image" ? "an image" : `a ${mediaType}`}`
             : "send them a private DM"
     return { who, what }
-  }, [triggerSource, commentMatchAll, triggers, storyTriggerType, replyMode, type, mediaType, selectedReel])
+  }, [triggerSource, commentMatchAll, triggers, storyTriggerType, replyMode, type, mediaType, selectedMedia.length])
+
+  function buildContentFromConfig(cfg: ReelReplyConfig, baseContent: any) {
+    const custom = JSON.parse(JSON.stringify(baseContent))
+    custom.reply_mode = cfg.replyMode
+    if (cfg.publicReply && cfg.publicReply.trim()) {
+      custom.public_replies = [cfg.publicReply.trim()]
+      custom.public_reply = cfg.publicReply.trim()
+    } else {
+      delete custom.public_replies
+      delete custom.public_reply
+    }
+
+    delete custom.message
+    delete custom.media
+    delete custom.card
+
+    if (cfg.type === "text") {
+      custom.message = cfg.messageText
+    } else if (cfg.type === "media") {
+      custom.media = { type: cfg.mediaType, url: cfg.mediaUrl.trim() }
+      if (cfg.messageText.trim()) custom.message = cfg.messageText
+    } else {
+      const cleanButtons = (cfg.buttons || [])
+        .map((b) => {
+          if (b.type === "web_url") {
+            let cleanUrl = b.url?.trim() || ""
+            if (cleanUrl.startsWith("https://https://")) cleanUrl = cleanUrl.replace("https://https://", "https://")
+            return { type: "web_url" as const, title: b.title, url: cleanUrl }
+          }
+          return { type: "postback" as const, title: b.title, payload: b.payload }
+        })
+        .filter((b) => b.title)
+      custom.card = {
+        title: cfg.cardTitle,
+        subtitle: cfg.cardSubtitle || undefined,
+        image_url: cfg.cardImage || undefined,
+        buttons: cleanButtons,
+      }
+    }
+
+    if (cfg.quickReplies && cfg.quickReplies.filter((q) => q.title.trim()).length > 0) {
+      custom.quick_replies = cfg.quickReplies
+        .filter((q) => q.title.trim())
+        .map((q) => ({ title: q.title.trim(), payload: q.payload }))
+    } else {
+      delete custom.quick_replies
+    }
+
+    return custom
+  }
 
   /* ---------- save ---------- */
   const handleSubmit = async () => {
@@ -865,6 +1146,18 @@ export function CreateRuleForm({
 
     const finalName = name.trim() || (triggerSource === "comment" && triggers.length === 0 ? "Reply to every comment" : triggers.length > 0 ? `Reply to "${triggers[0]}"` : "Untitled Workflow")
 
+    const mediaIds = triggerSource === "dm" ? [] : selectedMediaIds
+
+    // Snapshot current form values before saving
+    const currentSnapshot = getCurrentFormConfig()
+    const activeConfigs = { ...reelReplyConfigs }
+    let latestDefault = defaultReplyConfigRef.current || currentSnapshot
+    if (selectedReplyTarget === "all") {
+      latestDefault = currentSnapshot
+    } else {
+      activeConfigs[selectedReplyTarget] = currentSnapshot
+    }
+
     const payload = {
       userId,
       name: finalName,
@@ -876,7 +1169,31 @@ export function CreateRuleForm({
             : triggerSource === "story" && storyTriggerType === "reply" && triggers.length === 0 ? "ALL"
               : triggers.length > 0 ? triggers.join(", ") : "ALL",
       content,
-      specific_media_id: selectedReel?.id || null,
+      specific_media_ids: mediaIds,
+      specific_media_id: mediaIds[0] || null,
+      separate_workflows: !isEditing && mediaIds.length > 1,
+      media_items: selectedMedia.map((m: any) => {
+        const mId = String(m.id)
+        const customVal = (mediaTriggerOverrides[mId] || "").trim()
+        const customCfg = activeConfigs[mId]
+
+        let customContent = undefined
+        if (customCfg) {
+          customContent = buildContentFromConfig(customCfg, content)
+        }
+
+        return {
+          id: mId,
+          caption: typeof m.caption === "string" ? m.caption : null,
+          trigger_value: customVal || null,
+          trigger_type: customVal
+            ? customVal.toUpperCase() === "ALL" || customVal.toUpperCase() === "ALL_COMMENTS"
+              ? "reply_all"
+              : "keyword"
+            : undefined,
+          custom_content: customContent,
+        }
+      }),
     }
 
     try {
@@ -886,7 +1203,16 @@ export function CreateRuleForm({
         body: JSON.stringify(isEditing ? { ...payload, id: editRule!.id } : payload),
       })
       if (res.ok) {
-        toast.success(isEditing ? "Automation updated" : "Automation is live")
+        const json = await res.json().catch(() => null)
+        const isArray = Array.isArray(json)
+        const count = isArray ? json.length : json?.count || (payload.separate_workflows ? mediaIds.length : 1)
+        toast.success(
+          isEditing
+            ? "Automation updated"
+            : count > 1
+              ? `${count} separate automations created`
+              : "Automation is live",
+        )
         onSuccess()
       } else {
         toast.error("Could not save — try again")
@@ -896,6 +1222,31 @@ export function CreateRuleForm({
     } finally {
       setSaving(false)
     }
+  }
+
+  const renderMessageWithLinks = (text: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g
+    const parts = text.split(urlRegex)
+    return parts.map((part, i) => {
+      if (part.match(urlRegex)) {
+        return (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => {
+              e.stopPropagation()
+              toast.info(`Simulated: Opening link "${part}"`)
+            }}
+            className="text-[#3797f0] underline hover:opacity-80 font-medium break-all"
+          >
+            {part}
+          </a>
+        )
+      }
+      return part
+    })
   }
 
   const renderPayloadMessage = (isMobile: boolean = false, badgeText: string = "🎁 Delivered Payload") => {
@@ -929,14 +1280,14 @@ export function CreateRuleForm({
                 </div>
               )}
               <div>
-                <p className="text-[11px] font-bold text-white line-clamp-2 break-words">{cardTitle || "Card Title"}</p>
+                <p className="text-[11px] font-bold text-white line-clamp-2 break-words">{activeCardTitle || "Card Title"}</p>
                 {cardSubtitle && (
                   <p className="text-[8.5px] text-zinc-400 line-clamp-3 mt-0.5 break-words">{cardSubtitle}</p>
                 )}
               </div>
-              {buttons.filter((b) => b.title).length > 0 && (
+              {activeButtons.filter((b) => b.title).length > 0 && (
                 <div className="space-y-1 pt-1">
-                  {buttons.filter((b) => b.title).map((b) => (
+                  {activeButtons.filter((b) => b.title).map((b) => (
                     <button
                       key={b.id}
                       type="button"
@@ -987,13 +1338,13 @@ export function CreateRuleForm({
                   <span className="text-[8.5px] text-zinc-300 font-mono-ui">Voice Note Payload</span>
                 </div>
               )}
-              {messageText && (
-                <p className="text-[9.5px] text-zinc-200 mt-1 whitespace-pre-wrap break-words break-all">{messageText}</p>
+              {activeMessageText && (
+                <p className="text-[9.5px] text-zinc-200 mt-1 whitespace-pre-wrap break-words break-all">{renderMessageWithLinks(activeMessageText)}</p>
               )}
             </div>
           ) : (
             <p className="text-[10.5px] text-zinc-200 leading-snug whitespace-pre-wrap break-words break-all">
-              {messageText || "Here is your exclusive link!"}
+              {activeMessageText ? renderMessageWithLinks(activeMessageText) : "Here is your exclusive link!"}
             </p>
           )}
         </div>
@@ -1003,38 +1354,6 @@ export function CreateRuleForm({
 
   return (
     <div className="workflow-builder space-y-4">
-      {/* ── Modern Continuous Builder Header ── */}
-      <div className="bg-card border border-border rounded-xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-accent-yellow/15 border border-accent-yellow/30 flex items-center justify-center text-accent-yellow font-bold text-xs">
-            <Sparkles className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-foreground tracking-wide">
-                {isEditing ? "Edit Instagram Automation" : "Create Instagram Automation"}
-              </span>
-              <span className="text-[10px] text-muted-foreground">•</span>
-              <span className="text-xs text-muted-foreground">Continuous Builder</span>
-            </div>
-            <p className="text-[10px] text-muted-foreground font-mono-ui">
-              Instagram {sourceLabel} automation • Live phone preview stays locked on the right
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className={`text-[11px] font-mono-ui px-2.5 py-1 rounded-md border flex items-center gap-1.5 ${
-            canSave
-              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 font-semibold"
-              : "bg-muted/50 border-border text-muted-foreground"
-          }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${canSave ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground"}`} />
-            {canSave ? "All requirements met" : "Drafting workflow"}
-          </span>
-        </div>
-      </div>
-
       {/* ── UNIFIED 2-COLUMN BUILDER (Persistent Live Phone Simulator on Right) ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* ── LEFT COLUMN (7 cols): Continuous Workflow Flow (Independent scroll on desktop) ── */}
@@ -1068,8 +1387,7 @@ export function CreateRuleForm({
                   type="button"
                   onClick={() => {
                     setTriggerSource("comment")
-                    setSelectedReel(null)
-                    setHasSelectedReelOption(false)
+                    setMediaTarget({ mode: "none", items: [] })
                   }}
                   className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
                     triggerSource === "comment"
@@ -1088,8 +1406,7 @@ export function CreateRuleForm({
                   type="button"
                   onClick={() => {
                     setTriggerSource("story")
-                    setSelectedReel(null)
-                    setHasSelectedReelOption(false)
+                    setMediaTarget({ mode: "none", items: [] })
                   }}
                   className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
                     triggerSource === "story"
@@ -1108,8 +1425,7 @@ export function CreateRuleForm({
                   type="button"
                   onClick={() => {
                     setTriggerSource("dm")
-                    setSelectedReel(null)
-                    setHasSelectedReelOption(true)
+                    setMediaTarget({ mode: "all", items: [] })
                   }}
                   className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
                     triggerSource === "dm"
@@ -1132,6 +1448,7 @@ export function CreateRuleForm({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <FieldLabel>Automate which post or reel?</FieldLabel>
+                    <span className="text-[10px] text-muted-foreground font-normal">Multi-select</span>
                     <button
                       type="button"
                       onClick={() => fetchReels(true)}
@@ -1149,10 +1466,15 @@ export function CreateRuleForm({
                         Syncing feed...
                       </span>
                     )}
-                    {hasSelectedReelOption ? (
+                    {selectedMedia.length > 0 ? (
                       <span className="text-[10px] font-mono-ui text-accent-yellow flex items-center gap-1">
                         <Check className="w-3 h-3" />
-                        {selectedReel ? "Specific Post Selected" : "All Posts Selected"}
+                        {selectedMedia.length} {selectedMedia.length === 1 ? "Post" : "Posts"} Selected
+                      </span>
+                    ) : hasSelectedReelOption ? (
+                      <span className="text-[10px] font-mono-ui text-accent-yellow flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        All Posts Selected
                       </span>
                     ) : (
                       <span className="text-[10px] font-mono-ui text-muted-foreground">
@@ -1166,19 +1488,10 @@ export function CreateRuleForm({
                   {/* Option: Global Post Rule — ALWAYS available immediately */}
                   <button
                     type="button"
-                    onClick={() => {
-                      if (hasSelectedReelOption && selectedReel === null) {
-                        setSelectedReel(null)
-                        setHasSelectedReelOption(false)
-                      } else {
-                        setSelectedReel(null)
-                        setHasSelectedReelOption(true)
-                      }
-                      setPhoneScreenMode("content")
-                      setCommentSheetOpen(false)
-                    }}
+                    onClick={toggleAllMediaTarget}
+                    aria-pressed={mediaTarget.mode === "all"}
                     className={`aspect-square rounded-xl border flex flex-col items-center justify-center p-3 text-center transition-all cursor-pointer ${
-                      hasSelectedReelOption && selectedReel === null
+                      mediaTarget.mode === "all"
                         ? "border-accent-yellow ring-2 ring-accent-yellow/40 bg-accent-yellow/15 text-foreground shadow-sm"
                         : "border-border bg-card hover:border-foreground/30 hover:bg-accent/40"
                     }`}
@@ -1192,7 +1505,7 @@ export function CreateRuleForm({
 
                   {/* Reel Cards */}
                   {reels.filter((r) => r.media_type !== "STORY" && !r.is_story).map((reel) => {
-                    const isSelected = hasSelectedReelOption && selectedReel?.id === reel.id
+                    const isSelected = selectedMediaIds.includes(String(reel.id))
                     const isVideo = reel.media_type === "VIDEO" || (!reel.media_type && (reel.media_url?.includes(".mp4") || reel.permalink?.includes("/reel/")))
                     // Do not put .mp4 into img src
                     const cover = reel.thumbnail_url || (isVideo ? null : (reel.image_url || reel.media_url || reel.cover_url))
@@ -1200,17 +1513,9 @@ export function CreateRuleForm({
                       <button
                         key={reel.id}
                         type="button"
-                        onClick={() => {
-                          if (isSelected) {
-                            setSelectedReel(null)
-                            setHasSelectedReelOption(false)
-                          } else {
-                            setSelectedReel(reel)
-                            setHasSelectedReelOption(true)
-                          }
-                          setPhoneScreenMode("content")
-                          setCommentSheetOpen(false)
-                        }}
+                        onClick={() => toggleMediaTarget(reel)}
+                        aria-pressed={isSelected}
+                        title={isSelected ? "Deselect post" : "Select post"}
                         className={`aspect-square rounded-xl border overflow-hidden relative group text-left transition-all cursor-pointer bg-neutral-900 ${
                           isSelected
                             ? "border-accent-yellow ring-2 ring-accent-yellow/40 shadow-md"
@@ -1345,11 +1650,19 @@ export function CreateRuleForm({
                 {/* Stories picker */}
                 <div className="space-y-1.5 pt-2">
                   <div className="flex items-center justify-between">
-                    <FieldLabel>Apply to which Story?</FieldLabel>
-                    {hasSelectedReelOption ? (
+                    <div className="flex items-center gap-1.5">
+                      <FieldLabel>Apply to which Story?</FieldLabel>
+                      <span className="text-[10px] text-muted-foreground font-normal">Multi-select</span>
+                    </div>
+                    {selectedMedia.length > 0 ? (
                       <span className="text-[10px] font-mono-ui text-accent-yellow flex items-center gap-1">
                         <Check className="w-3 h-3" />
-                        {selectedReel ? "Specific Story Selected" : "All Stories Selected"}
+                        {selectedMedia.length} {selectedMedia.length === 1 ? "Story" : "Stories"} Selected
+                      </span>
+                    ) : hasSelectedReelOption ? (
+                      <span className="text-[10px] font-mono-ui text-accent-yellow flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        All Stories Selected
                       </span>
                     ) : (
                       <span className="text-[10px] font-mono-ui text-muted-foreground">
@@ -1360,17 +1673,10 @@ export function CreateRuleForm({
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        if (hasSelectedReelOption && selectedReel === null) {
-                          setSelectedReel(null)
-                          setHasSelectedReelOption(false)
-                        } else {
-                          setSelectedReel(null)
-                          setHasSelectedReelOption(true)
-                        }
-                      }}
+                      onClick={toggleAllMediaTarget}
+                      aria-pressed={mediaTarget.mode === "all"}
                       className={`aspect-square rounded-xl border flex flex-col items-center justify-center p-2 text-center transition-all cursor-pointer ${
-                        hasSelectedReelOption && selectedReel === null
+                        mediaTarget.mode === "all"
                           ? "border-accent-yellow ring-2 ring-accent-yellow/30 bg-accent-yellow/10"
                           : "border-border bg-card hover:border-foreground/30"
                       }`}
@@ -1380,21 +1686,15 @@ export function CreateRuleForm({
                       <span className="text-[8px] text-muted-foreground mt-0.5">Global</span>
                     </button>
                     {reels.filter((r) => r.media_type === "STORY" || r.is_story).map((story) => {
-                      const isSel = hasSelectedReelOption && selectedReel?.id === story.id
+                      const isSel = selectedMediaIds.includes(String(story.id))
                       const cover = story.thumbnail_url || story.image_url || story.media_url
                       return (
                         <button
                           key={story.id}
                           type="button"
-                          onClick={() => {
-                            if (isSel) {
-                              setSelectedReel(null)
-                              setHasSelectedReelOption(false)
-                            } else {
-                              setSelectedReel(story)
-                              setHasSelectedReelOption(true)
-                            }
-                          }}
+                          onClick={() => toggleMediaTarget(story)}
+                          aria-pressed={isSel}
+                          title={isSel ? "Deselect story" : "Select story"}
                           className={`aspect-square rounded-xl border overflow-hidden relative group text-left transition-all cursor-pointer ${
                             isSel ? "border-accent-yellow ring-2 ring-accent-yellow/30" : "border-border"
                           }`}
@@ -1584,191 +1884,162 @@ export function CreateRuleForm({
                       </div>
                     </div>
                   ) : (
-                    /* Mode 2: Specific Keywords with customizable suggestions (max 4) */
+                    /* Mode 2: Specific Keywords (Button-based, no input bar) */
                     <div className="space-y-3 p-3.5 rounded-xl border border-border bg-muted/30">
-                      <div>
-                        <p className="text-xs font-bold text-foreground">Trigger keywords</p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
-                          When a comment contains any of these words or phrases (press Enter to add):
-                        </p>
-                      </div>
-                      <TagInput
-                        value={triggers}
-                        onChange={(newTriggers) => {
-                          setTriggers(newTriggers)
-                          setSimActiveTriggerText("")
-                          setPhoneScreenMode("content")
-                          setCommentSheetOpen(true)
-                        }}
-                        onInputChange={(val) => {
-                          setCurrentTriggerDraft(val)
-                          setSimActiveTriggerText("")
-                          setPhoneScreenMode("content")
-                          setCommentSheetOpen(true)
-                        }}
-                        onFocus={() => {
-                          setPhoneScreenMode("content")
-                          setCommentSheetOpen(true)
-                        }}
-                        placeholder="type keyword, press Enter (e.g. price, link, send)"
-                      />
-
-                      {/* Customizable Keyword Suggestions (3 defaults: price, link, send | Max 4) */}
-                      <div className="space-y-2 pt-2 border-t border-border/60">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5">
-                            <Sparkles className="w-3 h-3 text-accent-yellow" />
-                            <span className="text-xs font-semibold text-foreground">Keyword Suggestions</span>
-                            <span className="text-[10px] text-muted-foreground font-mono-ui">({keywordSuggestions.length}/4 max)</span>
-                          </div>
-                          {keywordSuggestions.length < 4 && !isAddingKeyword && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setIsAddingKeyword(true)
-                                setNewKeywordInput("")
-                              }}
-                              className="text-[11px] font-semibold text-accent-yellow hover:underline flex items-center gap-1 cursor-pointer"
-                            >
-                              <Plus className="w-3 h-3" />
-                              Add suggestion
-                            </button>
-                          )}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-bold text-foreground">Trigger keywords</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            Click a keyword to activate. Click &apos;+ Add keyword&apos; to add your own.
+                          </p>
                         </div>
+                        {keywordSuggestions.length < 4 && !isAddingKeyword && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setIsAddingKeyword(true)
+                              setNewKeywordInput("")
+                            }}
+                            className="text-xs font-bold text-accent-yellow hover:underline flex items-center gap-1 cursor-pointer bg-accent-yellow/10 px-2.5 py-1 rounded-lg border border-accent-yellow/30"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            Add keyword
+                          </button>
+                        )}
+                      </div>
 
-                        {/* Suggestion Chips */}
-                        <div className="flex flex-wrap items-center gap-2">
-                          {keywordSuggestions.map((kw, idx) => {
-                            const isSel = triggers.includes(kw.toLowerCase())
-                            const isEditingThis = editingKeywordIndex === idx
+                      {/* Prominent Trigger Keyword Buttons */}
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        {keywordSuggestions.map((kw, idx) => {
+                          const isSel = triggers.includes(kw.toLowerCase())
+                          const isEditingThis = editingKeywordIndex === idx
 
-                            if (isEditingThis) {
-                              return (
-                                <div key={idx} className="flex items-center gap-1 bg-card border border-accent-yellow/60 rounded-lg p-1 shadow-xs">
-                                  <input
-                                    type="text"
-                                    value={editingKeywordText}
-                                    onChange={(e) => setEditingKeywordText(e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") {
-                                        e.preventDefault()
-                                        handleSaveEditKeyword(idx)
-                                      } else if (e.key === "Escape") {
-                                        setEditingKeywordIndex(null)
-                                      }
-                                    }}
-                                    autoFocus
-                                    className="bg-transparent text-xs text-foreground px-2 py-0.5 w-24 outline-none font-medium"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSaveEditKeyword(idx)}
-                                    className="p-1 hover:bg-accent-yellow/20 text-accent-yellow rounded cursor-pointer"
-                                    title="Save"
-                                  >
-                                    <Check className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setEditingKeywordIndex(null)}
-                                    className="p-1 hover:bg-destructive/20 text-muted-foreground hover:text-foreground rounded cursor-pointer"
-                                    title="Cancel"
-                                  >
-                                    <X className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              )
-                            }
-
+                          if (isEditingThis) {
                             return (
-                              <div
-                                key={kw + idx}
-                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
-                                  isSel
-                                    ? "bg-accent-yellow text-black border-accent-yellow font-bold shadow-xs"
-                                    : "bg-card text-foreground border-border hover:border-foreground/30 hover:bg-muted/40"
-                                }`}
-                              >
+                              <div key={idx} className="flex items-center gap-1.5 bg-card border border-accent-yellow/80 rounded-xl p-1.5 shadow-xs">
+                                <input
+                                  type="text"
+                                  value={editingKeywordText}
+                                  onChange={(e) => setEditingKeywordText(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault()
+                                      handleSaveEditKeyword(idx)
+                                    } else if (e.key === "Escape") {
+                                      setEditingKeywordIndex(null)
+                                    }
+                                  }}
+                                  autoFocus
+                                  className="bg-transparent text-xs sm:text-sm text-foreground px-2 py-0.5 w-28 outline-none font-semibold"
+                                />
                                 <button
                                   type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    toggleKeywordSuggestion(kw)
-                                  }}
-                                  className="flex items-center gap-1 cursor-pointer"
-                                  title={isSel ? "Click to remove from triggers" : "Click to add to triggers"}
+                                  onClick={() => handleSaveEditKeyword(idx)}
+                                  className="p-1 hover:bg-accent-yellow/20 text-accent-yellow rounded-lg cursor-pointer"
+                                  title="Save"
                                 >
-                                  <span>{kw}</span>
-                                  {isSel && <Check className="w-3 h-3 text-black stroke-[3]" />}
+                                  <Check className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleStartEditKeyword(idx)
-                                  }}
-                                  className={`p-0.5 rounded cursor-pointer transition-colors ${
-                                    isSel ? "text-black/70 hover:text-black hover:bg-black/10" : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                                  }`}
-                                  title="Edit suggestion"
+                                  onClick={() => setEditingKeywordIndex(null)}
+                                  className="p-1 hover:bg-destructive/20 text-muted-foreground hover:text-foreground rounded-lg cursor-pointer"
+                                  title="Cancel"
                                 >
-                                  <Pencil className="w-2.5 h-2.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleDeleteKeywordSuggestion(idx)
-                                  }}
-                                  className={`p-0.5 rounded cursor-pointer transition-colors ${
-                                    isSel ? "text-black/70 hover:text-black hover:bg-black/10" : "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                  }`}
-                                  title="Delete suggestion"
-                                >
-                                  <X className="w-2.5 h-2.5" />
+                                  <X className="w-3.5 h-3.5" />
                                 </button>
                               </div>
                             )
-                          })}
+                          }
 
-                          {isAddingKeyword && (
-                            <div className="flex items-center gap-1 bg-card border border-accent-yellow/60 rounded-lg p-1 shadow-xs">
-                              <input
-                                type="text"
-                                value={newKeywordInput}
-                                onChange={(e) => setNewKeywordInput(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault()
-                                    handleAddKeywordSuggestion()
-                                  } else if (e.key === "Escape") {
-                                    setIsAddingKeyword(false)
-                                  }
-                                }}
-                                placeholder="New keyword..."
-                                autoFocus
-                                className="bg-transparent text-xs text-foreground px-2 py-0.5 w-28 outline-none font-medium"
-                              />
+                          return (
+                            <div
+                              key={kw + idx}
+                              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold border transition-all shadow-xs ${
+                                isSel
+                                  ? "bg-accent-yellow text-black border-accent-yellow ring-2 ring-accent-yellow/50 scale-102"
+                                  : "bg-card text-foreground border-border hover:border-accent-yellow/60 hover:bg-muted/40"
+                              }`}
+                            >
                               <button
                                 type="button"
-                                onClick={handleAddKeywordSuggestion}
-                                className="p-1 hover:bg-accent-yellow/20 text-accent-yellow rounded cursor-pointer"
-                                title="Add"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  toggleKeywordSuggestion(kw)
+                                }}
+                                className="flex items-center gap-1.5 cursor-pointer"
+                                title={isSel ? "Click to deactivate keyword" : "Click to activate keyword"}
                               >
-                                <Check className="w-3 h-3" />
+                                <span>{kw}</span>
+                                {isSel && <Check className="w-3.5 h-3.5 text-black stroke-[3]" />}
                               </button>
                               <button
                                 type="button"
-                                onClick={() => setIsAddingKeyword(false)}
-                                className="p-1 hover:bg-destructive/20 text-muted-foreground hover:text-foreground rounded cursor-pointer"
-                                title="Cancel"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleStartEditKeyword(idx)
+                                }}
+                                className={`p-0.5 rounded cursor-pointer transition-colors ${
+                                  isSel ? "text-black/70 hover:text-black hover:bg-black/10" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                                }`}
+                                title="Edit keyword"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDeleteKeywordSuggestion(idx)
+                                }}
+                                className={`p-0.5 rounded cursor-pointer transition-colors ${
+                                  isSel ? "text-black/70 hover:text-black hover:bg-black/10" : "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                }`}
+                                title="Delete keyword"
                               >
                                 <X className="w-3 h-3" />
                               </button>
                             </div>
-                          )}
-                        </div>
+                          )
+                        })}
+
+                        {isAddingKeyword && (
+                          <div className="flex items-center gap-1.5 bg-card border border-accent-yellow/80 rounded-xl p-1.5 shadow-xs">
+                            <input
+                              type="text"
+                              value={newKeywordInput}
+                              onChange={(e) => setNewKeywordInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault()
+                                  handleAddKeywordSuggestion()
+                                } else if (e.key === "Escape") {
+                                  setIsAddingKeyword(false)
+                                }
+                              }}
+                              placeholder="New keyword..."
+                              autoFocus
+                              className="bg-transparent text-xs sm:text-sm text-foreground px-2 py-0.5 w-28 outline-none font-semibold"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleAddKeywordSuggestion}
+                              className="p-1 hover:bg-accent-yellow/20 text-accent-yellow rounded-lg cursor-pointer"
+                              title="Add"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsAddingKeyword(false)}
+                              className="p-1 hover:bg-destructive/20 text-muted-foreground hover:text-foreground rounded-lg cursor-pointer"
+                              title="Cancel"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1881,6 +2152,222 @@ export function CreateRuleForm({
                   </div>
                 </div>
               )}
+
+              {/* Multi-Post Trigger Configuration */}
+              {selectedMedia.length > 1 && !isEditing && !commentMatchAll && (triggerSource === "comment" || (triggerSource === "story" && storyTriggerType === "reply")) && (
+                <div className="rounded-xl border border-border/80 bg-card p-3 sm:p-4 space-y-3.5 shadow-xs">
+                  {/* Header */}
+                  <div className="flex items-center justify-between pb-1 border-b border-border/50">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-md bg-accent-yellow/15 flex items-center justify-center text-accent-yellow shrink-0">
+                        <Sliders className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-foreground">
+                          Trigger Mode for {selectedMedia.length} {triggerSource === "story" ? "Stories" : "Posts"}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          Configure trigger keywords for each post below. If unselected, that post inherits the default (<span className="text-foreground font-semibold">{triggers.length > 0 ? triggers[0] : "default"}</span>).
+                        </p>
+                      </div>
+                    </div>
+                    {customOverrideCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setMediaTriggerOverrides({})
+                        }}
+                        className="text-[10px] text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
+                      >
+                        Reset all
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Individual Keywords per Post View */}
+                  <div className="max-h-[460px] overflow-y-auto space-y-2.5 pr-1">
+                        {selectedMedia.map((media: any, idx: number) => {
+                          const mediaId = String(media.id)
+                          const customVal = mediaTriggerOverrides[mediaId] ?? ""
+                          const isCustom = customVal.trim().length > 0
+                          const cover = media.thumbnail_url || media.image_url || media.media_url || media.cover_url
+                          const cleanCaption = (media.caption || "").replace(/[\r\n\t]+/g, " ").trim()
+                          const isActivePreview = previewMediaIndex === idx
+                          const fallbackPlaceholder = triggers.length > 0 ? `Inherits: "${triggers[0]}"` : "e.g. price"
+
+                          return (
+                            <div
+                              key={mediaId}
+                              onClick={() => setPreviewMediaIndex(idx)}
+                              className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
+                                isActivePreview
+                                  ? "border-accent-yellow/80 bg-accent-yellow/5 ring-1 ring-accent-yellow/30 shadow-xs"
+                                  : "border-border/80 bg-muted/20 hover:border-foreground/30 hover:bg-muted/30"
+                              }`}
+                            >
+                              {/* Top row: Thumbnail + Title + Active Preview indicator */}
+                              <div className="flex items-center justify-between gap-2.5 mb-2">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-9 h-9 rounded-lg bg-neutral-900 border border-border/80 overflow-hidden shrink-0 relative flex items-center justify-center">
+                                    {cover ? (
+                                      <img
+                                        src={cover}
+                                        alt=""
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                          (e.currentTarget as HTMLElement).style.display = "none"
+                                        }}
+                                      />
+                                    ) : (
+                                      <Film className="w-4 h-4 text-neutral-500" />
+                                    )}
+                                    <span className="absolute bottom-0 right-0 px-1 rounded-tl bg-black/80 text-[7px] font-mono-ui text-white">
+                                      #{idx + 1}
+                                    </span>
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-semibold text-foreground truncate" title={cleanCaption || `Item #${idx + 1}`}>
+                                      {cleanCaption || `${triggerSource === "story" ? "Story" : "Post"} #${idx + 1}`}
+                                    </p>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                      {isCustom ? (
+                                        <span className="text-[9px] font-mono-ui font-bold text-accent-yellow bg-accent-yellow/15 px-1.5 py-0.2 rounded">
+                                          Trigger: &quot;{customVal}&quot;
+                                        </span>
+                                      ) : (
+                                        <span className="text-[9px] font-mono-ui text-muted-foreground">
+                                          Inherits: <span className="text-foreground/80">{triggers.length > 0 ? `"${triggers[0]}"` : "Default"}</span>
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="shrink-0 flex items-center gap-1">
+                                  {isActivePreview ? (
+                                    <span className="text-[9px] font-mono-ui font-semibold text-accent-yellow flex items-center gap-1 bg-accent-yellow/10 px-2 py-0.5 rounded-full border border-accent-yellow/30">
+                                      <Smartphone className="w-2.5 h-2.5" />
+                                      Phone Preview
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setPreviewMediaIndex(idx)
+                                      }}
+                                      className="text-[9px] font-mono-ui text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted cursor-pointer"
+                                    >
+                                      Preview →
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Trigger Keyword Selector (No input bar) */}
+                              <div className="flex flex-wrap items-center gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
+                                <span className="text-[10px] font-mono-ui uppercase tracking-wider text-muted-foreground shrink-0 mr-1">
+                                  Trigger:
+                                </span>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {keywordSuggestions.map((kw) => {
+                                    const isSelected = (customVal || (triggers.length > 0 ? triggers[0] : "")).toLowerCase() === kw.toLowerCase()
+                                    return (
+                                      <button
+                                        key={kw}
+                                        type="button"
+                                        onClick={() => {
+                                          setMediaTriggerOverrides((prev) => ({
+                                            ...prev,
+                                            [mediaId]: kw,
+                                          }))
+                                        }}
+                                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs ${
+                                          isSelected
+                                            ? "bg-accent-yellow text-black ring-2 ring-accent-yellow/60 font-black scale-102"
+                                            : "bg-muted/70 hover:bg-muted text-foreground border border-border/80 hover:border-accent-yellow/50"
+                                        }`}
+                                      >
+                                        <span>{kw}</span>
+                                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[3] text-black" />}
+                                      </button>
+                                    )
+                                  })}
+
+                                  {/* Allow adding custom keyword inline */}
+                                  {isAddingCustomForMedia === mediaId ? (
+                                    <div className="flex items-center gap-1 bg-card border border-accent-yellow/60 rounded-lg p-1 shadow-xs">
+                                      <input
+                                        type="text"
+                                        value={newCustomKeyword}
+                                        onChange={(e) => setNewCustomKeyword(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            e.preventDefault()
+                                            const trimmed = newCustomKeyword.trim().toLowerCase()
+                                            if (trimmed) {
+                                              if (!keywordSuggestions.includes(trimmed)) {
+                                                setKeywordSuggestions([...keywordSuggestions, trimmed])
+                                              }
+                                              setMediaTriggerOverrides((prev) => ({ ...prev, [mediaId]: trimmed }))
+                                              setNewCustomKeyword("")
+                                              setIsAddingCustomForMedia(null)
+                                            }
+                                          } else if (e.key === "Escape") {
+                                            setIsAddingCustomForMedia(null)
+                                          }
+                                        }}
+                                        autoFocus
+                                        placeholder="keyword..."
+                                        className="bg-transparent text-xs text-foreground px-2 py-0.5 w-24 outline-none font-medium"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const trimmed = newCustomKeyword.trim().toLowerCase()
+                                          if (trimmed) {
+                                            if (!keywordSuggestions.includes(trimmed)) {
+                                              setKeywordSuggestions([...keywordSuggestions, trimmed])
+                                            }
+                                            setMediaTriggerOverrides((prev) => ({ ...prev, [mediaId]: trimmed }))
+                                            setNewCustomKeyword("")
+                                            setIsAddingCustomForMedia(null)
+                                          }
+                                        }}
+                                        className="p-1 hover:bg-accent-yellow/20 text-accent-yellow rounded cursor-pointer"
+                                      >
+                                        <Check className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setIsAddingCustomForMedia(null)}
+                                        className="p-1 hover:bg-destructive/20 text-muted-foreground rounded cursor-pointer"
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setIsAddingCustomForMedia(mediaId)
+                                        setNewCustomKeyword("")
+                                      }}
+                                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-accent-yellow hover:text-accent-yellow/80 hover:bg-accent-yellow/10 border border-dashed border-accent-yellow/40 flex items-center gap-1 cursor-pointer transition-colors"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                      <span>Add keyword</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                </div>
+              )}
             </div>
 
             {/* 3. CONFIGURE REPLY */}
@@ -1891,6 +2378,136 @@ export function CreateRuleForm({
                   <p className="text-xs text-muted-foreground mt-0.5">Customize your private DM message and optional public comment replies.</p>
                 </div>
               </div>
+
+            {/* Multi-Post Horizontal Reply Selector Bar */}
+            {selectedMedia.length > 1 && (
+              <div className="bg-muted/25 border border-border/80 rounded-xl p-3 sm:p-4 space-y-3 shadow-xs">
+                <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-md bg-accent-yellow/15 flex items-center justify-center text-accent-yellow shrink-0">
+                      <Sliders className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-foreground">
+                        Configure Reply for {selectedMedia.length} {triggerSource === "story" ? "Stories" : "Reels"}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {selectedReplyTarget === "all"
+                          ? "Editing shared reply template. Click any reel to configure its unique response."
+                          : `Editing unique response for Reel #${previewMediaIndex + 1}.`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Horizontal Selector: "Same for all" button + Each Post button */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-0.5 no-scrollbar">
+                  {/* Button 1: Same for all */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectReplyTarget("all")}
+                    className={`shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl border text-left transition-all cursor-pointer ${
+                      selectedReplyTarget === "all"
+                        ? "border-accent-yellow bg-accent-yellow text-black font-bold shadow-xs ring-2 ring-accent-yellow/50"
+                        : "border-border/80 bg-card hover:bg-muted/40 text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                      selectedReplyTarget === "all" ? "bg-black/20 text-black" : "bg-accent-yellow/15 text-accent-yellow"
+                    }`}>
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0 pr-1">
+                      <p className={`text-xs font-bold leading-tight ${selectedReplyTarget === "all" ? "text-black" : "text-foreground"}`}>
+                        Same for all
+                      </p>
+                      <p className={`text-[10px] font-mono-ui ${selectedReplyTarget === "all" ? "text-black/80" : "text-muted-foreground"}`}>
+                        {selectedMedia.length} posts
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* Buttons for each individual post */}
+                  {selectedMedia.map((media: any, idx: number) => {
+                    const mId = String(media.id)
+                    const isSelected = selectedReplyTarget === mId
+                    const cover = media.thumbnail_url || media.image_url || media.media_url || media.cover_url
+                    const cleanCaption = (media.caption || "").replace(/[\r\n\t]+/g, " ").trim()
+                    const hasCustomReply = Boolean(reelReplyConfigs[mId])
+
+                    return (
+                      <button
+                        key={mId}
+                        type="button"
+                        onClick={() => handleSelectReplyTarget(mId)}
+                        className={`shrink-0 flex items-center gap-2 p-1.5 pr-3 rounded-xl border text-left transition-all cursor-pointer ${
+                          isSelected
+                            ? "border-accent-yellow bg-accent-yellow/15 text-foreground ring-2 ring-accent-yellow/50 shadow-xs"
+                            : "border-border/80 bg-card hover:bg-muted/40 text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-neutral-900 border border-border/60 overflow-hidden shrink-0 relative flex items-center justify-center">
+                          {cover ? (
+                            <img src={cover} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <Film className="w-3.5 h-3.5 text-neutral-500" />
+                          )}
+                          <span className="absolute bottom-0 right-0 px-1 rounded-tl bg-black/80 text-[7px] font-mono-ui text-white">
+                            #{idx + 1}
+                          </span>
+                        </div>
+                        <div className="min-w-0 max-w-[130px]">
+                          <p className="text-[11px] font-bold text-foreground truncate">
+                            {cleanCaption || `Post #${idx + 1}`}
+                          </p>
+                          <div className="flex items-center gap-1 text-[9px] font-mono-ui">
+                            {hasCustomReply ? (
+                              <span className="text-emerald-400 font-semibold flex items-center gap-0.5">
+                                <Check className="w-2.5 h-2.5 stroke-[3]" /> Custom reply
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">Default reply</span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Status Indicator banner when editing a specific reel */}
+                {selectedReplyTarget !== "all" && (
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-accent-yellow/10 border border-accent-yellow/30 text-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-2 h-2 rounded-full bg-accent-yellow shrink-0 animate-pulse" />
+                      <span className="font-semibold text-foreground shrink-0">
+                        Configuring Reel #{previewMediaIndex + 1}:
+                      </span>
+                      <span className="text-accent-yellow font-medium truncate">
+                        {(selectedMedia[previewMediaIndex]?.caption || "").slice(0, 40) || `Post #${previewMediaIndex + 1}`}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (defaultReplyConfigRef.current) {
+                          applyConfigToForm(defaultReplyConfigRef.current)
+                        }
+                        setReelReplyConfigs((prev) => {
+                          const copy = { ...prev }
+                          delete copy[selectedReplyTarget]
+                          return copy
+                        })
+                        toast.info(`Reset Reel #${previewMediaIndex + 1} to match "Same for all"`)
+                      }}
+                      className="text-[11px] font-semibold text-accent-yellow hover:underline cursor-pointer shrink-0 ml-2"
+                    >
+                      Reset to &quot;Same for all&quot;
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Comment Flow Direction */}
             {triggerSource === "comment" && (
@@ -1948,38 +2565,6 @@ export function CreateRuleForm({
                     1 reply per user
                   </span>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
-                  The automated public reply sent under the commenter&apos;s comment on your reel or post.
-                </p>
-
-                {/* Single Comment Input Field */}
-                <div className="relative">
-                  <TextField
-                    value={publicReply}
-                    onChange={(val) => {
-                      setPublicReply(val)
-                      setPhoneScreenMode("content")
-                      setCommentSheetOpen(true)
-                    }}
-                    placeholder='e.g. "Sent you a DM! 📬"'
-                  />
-                  {publicReply.trim() && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setPublicReply("")
-                        setPhoneScreenMode("content")
-                        setCommentSheetOpen(true)
-                      }}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md cursor-pointer transition-colors"
-                      title="Clear reply"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
                 {/* Customizable Reply Suggestions (Click sets the single reply) */}
                 <div className="space-y-2 pt-2 border-t border-border/60">
                   <div className="flex items-center justify-between">
@@ -2440,7 +3025,14 @@ export function CreateRuleForm({
             </div>
 
             {/* 4. DELIVERY OPTIONS & PREFERENCES */}
-            <div className="bg-card border border-border rounded-xl p-4 sm:p-5 space-y-4">
+            <div
+              onClick={() => {
+                setPhoneScreenMode("dm")
+                setCommentSheetOpen(false)
+                setSimStage(0)
+              }}
+              className="bg-card border border-border rounded-xl p-4 sm:p-5 space-y-4 transition-colors"
+            >
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <div>
                   <h3 className="text-sm font-bold text-foreground tracking-tight">4. Delivery Options & Preferences</h3>
@@ -2464,9 +3056,19 @@ export function CreateRuleForm({
                       Sent automatically as the initial private reply in Instagram DM to open the 24-hour messaging window upon commenter interaction.
                     </p>
                   </div>
-                  <span className="text-[10px] font-mono-ui text-accent-yellow bg-accent-yellow/10 px-2 py-0.5 rounded border border-accent-yellow/20 shrink-0">
-                    Live on simulator
-                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setPhoneScreenMode("dm")
+                      setCommentSheetOpen(false)
+                      setSimStage(0)
+                      toast.info("Viewing Initial Greeting & Request Card in live preview")
+                    }}
+                    className="text-[10px] font-mono-ui text-accent-yellow bg-accent-yellow/10 hover:bg-accent-yellow/20 px-2 py-0.5 rounded border border-accent-yellow/20 shrink-0 cursor-pointer transition-colors"
+                  >
+                    View on simulator →
+                  </button>
                 </div>
 
                 <div className="space-y-3 pt-1">
@@ -2788,14 +3390,24 @@ export function CreateRuleForm({
                     {triggerSource === "story" ? "Target Story:" : triggerSource === "dm" ? "Target Inbox:" : "Target Reel / Post:"}
                   </span>
                   <span className="font-semibold text-[11px] text-foreground truncate max-w-[170px]">
-                    {selectedReel ? (selectedReel.caption || "Specific Reel / Post") : (triggerSource === "story" ? "All Stories" : "All Reels & Posts")}
+                    {selectedMedia.length > 1
+                      ? `${selectedMedia.length} ${triggerSource === "story" ? "Stories" : "Posts / Reels"}`
+                      : selectedReel
+                        ? (selectedReel.caption || (triggerSource === "story" ? "Specific Story" : "Specific Reel / Post"))
+                        : (triggerSource === "story" ? "All Stories" : "All Reels & Posts")}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between py-1 border-b border-border/60">
                   <span className="text-muted-foreground text-[11px]">Keywords:</span>
                   <span className="font-semibold text-[11px] text-accent-yellow">
-                    {triggers.length > 0 ? triggers.join(", ") : commentMatchAll ? "Every Comment (All)" : "None"}
+                    {customOverrideCount > 0
+                      ? `${triggers.length > 0 ? triggers.join(", ") : commentMatchAll ? "All comments" : "Default"} (${customOverrideCount} custom)`
+                      : triggers.length > 0
+                        ? triggers.join(", ")
+                        : commentMatchAll
+                          ? "Every Comment (All)"
+                          : "None"}
                   </span>
                 </div>
 
@@ -2829,7 +3441,15 @@ export function CreateRuleForm({
                 ) : (
                   <Zap className="w-4 h-4 stroke-[2.5] text-black" />
                 )}
-                <span>{saving ? "Saving..." : isEditing ? "Save Workflow" : "Publish Workflow"}</span>
+                <span>
+                  {saving
+                    ? "Saving..."
+                    : isEditing
+                      ? "Save Workflow"
+                      : !isEditing && selectedMedia.length > 1
+                        ? `Publish ${selectedMedia.length} Workflows`
+                        : "Publish Workflow"}
+                </span>
               </button>
 
               {validationHint && (
@@ -2951,7 +3571,7 @@ export function CreateRuleForm({
                     </button>
                     <div className="text-center leading-tight">
                       <p className="text-[8px] uppercase tracking-wider text-zinc-400 font-semibold font-mono-ui">
-                        {(creatorUsername === "creator" ? "Y.MANOJ_KUMAR_21" : creatorUsername).toUpperCase()}
+                        {creatorUsername.toUpperCase()}
                       </p>
                       <p className="text-xs font-bold text-white tracking-tight">Posts</p>
                     </div>
@@ -3070,7 +3690,7 @@ export function CreateRuleForm({
                             >
                               <p className="leading-snug text-zinc-300">
                                 <span className="font-bold text-white mr-1.5">
-                                  @{creatorUsername || "creator"}
+                                  {creatorHandle}
                                 </span>
                                 <span className="text-zinc-200">{liveAutoReplyText}</span>
                                 <span className="ml-1.5 text-[8px] font-mono-ui font-semibold text-emerald-400 bg-emerald-500/10 px-1 py-0.2 rounded border border-emerald-500/20">
@@ -3218,7 +3838,7 @@ export function CreateRuleForm({
                                   <div className="flex-1 space-y-0.5">
                                     <div className="flex items-center gap-1 flex-wrap">
                                       <span className="font-bold text-[10px] text-white">
-                                        @{creatorUsername || "creator"}
+                                        {creatorHandle}
                                       </span>
                                       <span className="text-[7px] font-mono-ui font-semibold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1 rounded-full">
                                         Auto Reply
@@ -3308,7 +3928,7 @@ export function CreateRuleForm({
                                   <div className="flex-1 space-y-0.5">
                                     <div className="flex items-center gap-1 flex-wrap">
                                       <span className="font-bold text-[10px] text-white">
-                                        @{creatorUsername || "creator"}
+                                        {creatorHandle}
                                       </span>
                                       <span className="text-[7px] font-mono-ui font-semibold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1 rounded-full">
                                         Auto Reply
@@ -3531,7 +4151,7 @@ export function CreateRuleForm({
                           type="text"
                           value={simStoryInputText}
                           onChange={(e) => setSimStoryInputText(e.target.value)}
-                          placeholder={`Reply to @${creatorUsername}...`}
+                          placeholder={`Reply to ${creatorHandle}...`}
                           className="bg-transparent text-[10px] text-white placeholder-white/70 focus:outline-none flex-1 min-w-0"
                         />
                         <button
@@ -3598,7 +4218,7 @@ export function CreateRuleForm({
                         <div className="absolute bottom-0 right-0 w-2 h-2 bg-green-500 rounded-full border border-neutral-950" />
                       </div>
                       <div className="leading-tight">
-                        <p className="text-[10px] font-semibold text-foreground truncate max-w-[90px]">@{creatorUsername}</p>
+                        <p className="text-[10px] font-semibold text-foreground truncate max-w-[90px]">{creatorHandle}</p>
                         <p className="text-[7px] text-green-500 font-medium">Active now</p>
                       </div>
                     </div>
@@ -3736,6 +4356,18 @@ export function CreateRuleForm({
                           <button
                             type="button"
                             onClick={() => {
+                              if (simStage >= 1) {
+                                setSimStage(0);
+                                setTimeout(() => {
+                                  setSimStage(1);
+                                  if (checkFollow) {
+                                    toast.info("Checking follow status... Non-follower detected, Gate triggered!");
+                                  } else {
+                                    toast.success("Request received! Payload delivered 🎉");
+                                  }
+                                }, 150);
+                                return;
+                              }
                               setSimStage(1);
                               if (checkFollow) {
                                 toast.info("Checking follow status... Non-follower detected, Gate triggered!");
@@ -3743,9 +4375,20 @@ export function CreateRuleForm({
                                 toast.success("Request received! Payload delivered 🎉");
                               }
                             }}
-                            className="w-full h-7 bg-[#2c2c2e] hover:bg-[#38383a] text-white text-[10px] font-semibold rounded-xl flex items-center justify-center transition-colors cursor-pointer"
+                            className={`w-full h-7 text-white text-[10px] font-semibold rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+                              simStage >= 1
+                                ? "bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/40"
+                                : "bg-[#2c2c2e] hover:bg-[#38383a] hover:scale-[1.01] active:scale-95"
+                            }`}
                           >
-                            <span>{initialButtonText || "Send me the link"}</span>
+                            {simStage >= 1 ? (
+                              <span className="flex items-center gap-1 text-emerald-300 font-mono-ui">
+                                <Check className="w-3 h-3 stroke-[2.5]" />
+                                {initialButtonText || "Send me the link"}
+                              </span>
+                            ) : (
+                              <span>{initialButtonText || "Send me the link"}</span>
+                            )}
                           </button>
                         </div>
                       </div>
@@ -3792,7 +4435,7 @@ export function CreateRuleForm({
                                 <div className="space-y-1.5 pt-0.5">
                                   <button
                                     type="button"
-                                    onClick={() => toast.info(`Simulated: Opening @${creatorUsername}'s Instagram profile`)}
+                                    onClick={() => toast.info(`Simulated: Opening ${creatorHandle}'s Instagram profile`)}
                                     className="w-full h-7 bg-[#2c2c2e] hover:bg-[#38383a] text-white text-[10px] font-semibold rounded-xl flex items-center justify-center transition-colors cursor-pointer"
                                   >
                                     <span>{followGateButtonFollow || "Visit Profile"}</span>
@@ -3995,7 +4638,7 @@ export function CreateRuleForm({
                       </button>
                       <div className="text-center leading-tight">
                         <p className="text-[7px] uppercase tracking-wider text-zinc-400 font-semibold font-mono-ui">
-                          {(creatorUsername === "creator" ? "Y.MANOJ_KUMAR_21" : creatorUsername).toUpperCase()}
+                          {creatorUsername.toUpperCase()}
                         </p>
                         <p className="text-[11px] font-bold text-white tracking-tight">Posts</p>
                       </div>
@@ -4076,7 +4719,7 @@ export function CreateRuleForm({
                                 className="pl-2 border-l-2 border-[#d4af37]/60 space-y-0.5 cursor-pointer"
                               >
                                 <p className="leading-snug text-zinc-300">
-                                  <span className="font-bold text-white mr-1">@{creatorUsername || "creator"}</span>
+                                  <span className="font-bold text-white mr-1">{creatorHandle}</span>
                                   <span className="text-zinc-200">{liveAutoReplyText}</span>
                                 </p>
                               </div>
@@ -4209,7 +4852,7 @@ export function CreateRuleForm({
                                     <div className="flex-1 space-y-0.5">
                                       <div className="flex items-center gap-1">
                                         <span className="font-bold text-[9px] text-white">
-                                          @{creatorUsername || "creator"}
+                                          {creatorHandle}
                                         </span>
                                         <span className="text-[6px] text-emerald-400 bg-emerald-500/15 px-1 rounded-full font-mono-ui">
                                           Auto Reply
@@ -4274,7 +4917,7 @@ export function CreateRuleForm({
                                     <div className="flex-1 space-y-0.5">
                                       <div className="flex items-center gap-1">
                                         <span className="font-bold text-[9px] text-white">
-                                          @{creatorUsername || "creator"}
+                                          {creatorHandle}
                                         </span>
                                         <span className="text-[6px] text-emerald-400 bg-emerald-500/15 px-1 rounded-full font-mono-ui">
                                           Auto Reply
@@ -4453,7 +5096,7 @@ export function CreateRuleForm({
                             {(creatorUsername || "C").substring(0, 1).toUpperCase()}
                           </div>
                         </div>
-                        <span className="text-[9px] font-semibold text-white truncate max-w-[100px]">@{creatorUsername}</span>
+                        <span className="text-[9px] font-semibold text-white truncate max-w-[100px]">{creatorHandle}</span>
                       </div>
                       <button
                         type="button"
@@ -4568,6 +5211,18 @@ export function CreateRuleForm({
                           <button
                             type="button"
                             onClick={() => {
+                              if (simStage >= 1) {
+                                setSimStage(0);
+                                setTimeout(() => {
+                                  setSimStage(1);
+                                  if (checkFollow) {
+                                    toast.info("Checking follow status... Non-follower detected, Gate triggered!");
+                                  } else {
+                                    toast.success("Request received! Payload delivered 🎉");
+                                  }
+                                }, 150);
+                                return;
+                              }
                               setSimStage(1);
                               if (checkFollow) {
                                 toast.info("Checking follow status... Non-follower detected, Gate triggered!");
@@ -4575,9 +5230,20 @@ export function CreateRuleForm({
                                 toast.success("Request received! Payload delivered 🎉");
                               }
                             }}
-                            className="w-full py-1 bg-[#2c2c2e] hover:bg-[#38383a] text-[10px] font-semibold rounded-lg cursor-pointer"
+                            className={`w-full py-1 text-[10px] font-semibold rounded-lg cursor-pointer transition-all ${
+                              simStage >= 1
+                                ? "bg-emerald-600/30 border border-emerald-500/40 text-emerald-300"
+                                : "bg-[#2c2c2e] hover:bg-[#38383a]"
+                            }`}
                           >
-                            {initialButtonText || "Send me the link"}
+                            {simStage >= 1 ? (
+                              <span className="flex items-center justify-center gap-1 text-emerald-300 font-mono-ui">
+                                <Check className="w-3 h-3 stroke-[2.5]" />
+                                {initialButtonText || "Send me the link"}
+                              </span>
+                            ) : (
+                              <span>{initialButtonText || "Send me the link"}</span>
+                            )}
                           </button>
                         </div>
                       </div>
@@ -4616,7 +5282,7 @@ export function CreateRuleForm({
                                   <div className="space-y-1 pt-0.5">
                                     <button
                                       type="button"
-                                      onClick={() => toast.info(`Simulated: Opening @${creatorUsername}'s Instagram profile`)}
+                                      onClick={() => toast.info(`Simulated: Opening ${creatorHandle}'s Instagram profile`)}
                                       className="w-full py-1 bg-[#2c2c2e] hover:bg-[#38383a] text-[9px] font-semibold rounded-lg text-center cursor-pointer"
                                     >
                                       {followGateButtonFollow || "Visit Profile"}

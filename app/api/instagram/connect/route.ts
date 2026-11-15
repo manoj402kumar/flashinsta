@@ -371,6 +371,7 @@ export async function POST(request: NextRequest) {
         name: pageName || effectiveUsername,
         profilePic,
         connectedAt: new Date().toISOString(),
+        profilePicUpdatedAt: new Date().toISOString(),
         verifiedVia,
         tokenType: pageAccessToken || verifiedVia.includes("page") ? "PAGE" : "USER",
         pageId: pageId || null,

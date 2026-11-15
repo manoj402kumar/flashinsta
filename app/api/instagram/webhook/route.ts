@@ -33,6 +33,11 @@ import { getSpintaxPublicReply, expandTemplate } from "@/lib/spintax"
 import { checkAndIncrementWarmupQuota } from "@/lib/warmup"
 import { applyHumanizedJitter } from "@/lib/jitter"
 import { isMetaThrottled } from "@/lib/meta-rate-limit"
+import {
+  automationTargetsMediaId,
+  getAutomationMediaIds,
+  hasAutomationMediaTarget,
+} from "@/lib/automation-media"
 
 const WEBHOOK_VERIFY_TOKEN = process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN
 // Meta signs every webhook POST with HMAC-SHA256 of the raw body. Depending on app setup the
@@ -413,7 +418,7 @@ async function processWebhookEntries(entries: any[]) {
           const commentId = change.value.id
           const commentText = change.value.text.toLowerCase().trim()
           const senderId = change.value.from.id
-          const mediaId = change.value.media.id
+          const mediaId = String(change.value.media.id)
           const parentId = change.value.parent_id || null
 
           if (senderId === webhookId || senderId === user.business_account_id || senderId === user.page_id) continue
@@ -427,29 +432,32 @@ async function processWebhookEntries(entries: any[]) {
             (a.trigger_value || "").toUpperCase().trim() === "ALL" ||
             (a.trigger_value || "").toUpperCase().trim() === "ALL_COMMENTS"
 
+          const targetsThisMedia = (a: any) => automationTargetsMediaId(a, mediaId)
+          const isGlobalRule = (a: any) => !hasAutomationMediaTarget(a)
+
           // Priority: specific post keyword → specific post reply-all → global keyword → global reply-all
           let match = commentAutomations.find(
             (a: any) =>
-              a.specific_media_id === mediaId &&
+              targetsThisMedia(a) &&
               a.trigger_type === "keyword" &&
               keywordMatches(a.trigger_value, commentText),
           )
           if (!match) {
             match = commentAutomations.find(
-              (a: any) => a.specific_media_id === mediaId && isReplyAllRule(a),
+              (a: any) => targetsThisMedia(a) && isReplyAllRule(a),
             )
           }
           if (!match) {
             match = commentAutomations.find(
               (a: any) =>
-                !a.specific_media_id &&
+                isGlobalRule(a) &&
                 a.trigger_type === "keyword" &&
                 keywordMatches(a.trigger_value, commentText),
             )
           }
           if (!match) {
             match = commentAutomations.find(
-              (a: any) => !a.specific_media_id && isReplyAllRule(a),
+              (a: any) => isGlobalRule(a) && isReplyAllRule(a),
             )
           }
           if (!match) continue
@@ -556,17 +564,20 @@ async function processWebhookEntries(entries: any[]) {
           const storyMediaId = storyObj?.id || event.reaction?.mid || null
           const storyUrl = storyObj?.url || ""
 
-          const isExactMediaMatch = (ruleMediaId?: string | null) => {
-            if (!ruleMediaId || ruleMediaId === "ALL") return false
-            if (storyMediaId && (storyMediaId === ruleMediaId || ruleMediaId.includes(storyMediaId) || storyMediaId.includes(ruleMediaId))) return true
-            if (storyUrl && storyUrl.includes(ruleMediaId)) return true
-            return false
+          const isExactMediaMatch = (rule: any) => {
+            const ruleMediaIds = getAutomationMediaIds(rule).filter((id) => id !== "ALL")
+            if (ruleMediaIds.length === 0) return false
+            return ruleMediaIds.some((ruleMediaId) => {
+              if (storyMediaId && (storyMediaId === ruleMediaId || ruleMediaId.includes(storyMediaId) || storyMediaId.includes(ruleMediaId))) return true
+              if (storyUrl && storyUrl.includes(ruleMediaId)) return true
+              return false
+            })
           }
 
-          const matchesMedia = (ruleMediaId?: string | null) => {
-            if (!ruleMediaId || ruleMediaId === "ALL") return true
-            if (storyMediaId && (storyMediaId === ruleMediaId || ruleMediaId.includes(storyMediaId) || storyMediaId.includes(ruleMediaId))) return true
-            if (storyUrl && storyUrl.includes(ruleMediaId)) return true
+          const matchesMedia = (rule: any) => {
+            const ruleMediaIds = getAutomationMediaIds(rule).filter((id) => id !== "ALL")
+            if (ruleMediaIds.length === 0) return true
+            if (isExactMediaMatch(rule)) return true
             // If the user replied to an active story with the trigger keyword, allow match
             return true
           }
@@ -579,7 +590,7 @@ async function processWebhookEntries(entries: any[]) {
             match = storyAutomations.find(
               (a: any) =>
                 a.trigger_type === "mention" &&
-                matchesMedia(a.specific_media_id),
+                matchesMedia(a),
             )
           }
 
@@ -589,7 +600,7 @@ async function processWebhookEntries(entries: any[]) {
             match = storyAutomations.find((a: any) => {
               if (a.trigger_type !== "reply" && a.trigger_type !== "reaction") return false
               if (isWildcardTrigger(a.trigger_value)) return false
-              if (!isExactMediaMatch(a.specific_media_id)) return false
+              if (!isExactMediaMatch(a)) return false
               return keywordMatches(a.trigger_value, messageText)
             })
 
@@ -598,7 +609,7 @@ async function processWebhookEntries(entries: any[]) {
               match = storyAutomations.find((a: any) => {
                 if (a.trigger_type !== "reply" && a.trigger_type !== "reaction") return false
                 if (isWildcardTrigger(a.trigger_value)) return false
-                if (!matchesMedia(a.specific_media_id)) return false
+                if (!matchesMedia(a)) return false
                 return keywordMatches(a.trigger_value, messageText)
               })
             }
@@ -610,7 +621,7 @@ async function processWebhookEntries(entries: any[]) {
             match = storyAutomations.find((a: any) => {
               if (a.trigger_type !== "reaction" && a.trigger_type !== "reply") return false
               if (isWildcardTrigger(a.trigger_value)) return false
-              if (!isExactMediaMatch(a.specific_media_id)) return false
+              if (!isExactMediaMatch(a)) return false
               const triggers = a.trigger_value?.split(",").map((t: string) => t.trim()) || []
               return triggers.some((t: string) => t.toLowerCase() === reactionEmoji.toLowerCase())
             })
@@ -620,7 +631,7 @@ async function processWebhookEntries(entries: any[]) {
               match = storyAutomations.find((a: any) => {
                 if (a.trigger_type !== "reaction" && a.trigger_type !== "reply") return false
                 if (isWildcardTrigger(a.trigger_value)) return false
-                if (!matchesMedia(a.specific_media_id)) return false
+                if (!matchesMedia(a)) return false
                 const triggers = a.trigger_value?.split(",").map((t: string) => t.trim()) || []
                 return triggers.some((t: string) => t.toLowerCase() === reactionEmoji.toLowerCase())
               })
@@ -633,7 +644,7 @@ async function processWebhookEntries(entries: any[]) {
             match = storyAutomations.find(
               (a: any) =>
                 (a.trigger_type === "reply" || a.trigger_type === "reaction" || !a.trigger_type) &&
-                isExactMediaMatch(a.specific_media_id) &&
+                isExactMediaMatch(a) &&
                 isWildcardTrigger(a.trigger_value),
             )
             // Global wildcard fallback
@@ -724,7 +735,7 @@ async function processWebhookEntries(entries: any[]) {
                       id: `mid_reply_${Date.now()}_${Math.random()}`,
                       conversation_id: conv.id,
                       user_id: user.id,
-                      sender_id: user.business_account_id,
+                      sender_id: user.business_account_id || String(user.id),
                       sender_username: getInstagramUsername(user),
                       content: responsePreviewText(content),
                       is_from_instagram: false,
@@ -753,7 +764,7 @@ async function processWebhookEntries(entries: any[]) {
                       id: `mid_reply_${Date.now()}_${Math.random()}`,
                       conversation_id: conv.id,
                       user_id: user.id,
-                      sender_id: user.business_account_id,
+                      sender_id: user.business_account_id || String(user.id),
                       sender_username: getInstagramUsername(user),
                       content: "[Follow Gate Card]",
                       is_from_instagram: false,
@@ -770,7 +781,7 @@ async function processWebhookEntries(entries: any[]) {
                     id: `mid_reply_${Date.now()}_${Math.random()}`,
                     conversation_id: conv.id,
                     user_id: user.id,
-                    sender_id: user.business_account_id,
+                    sender_id: user.business_account_id || String(user.id),
                     sender_username: getInstagramUsername(user),
                     content: responsePreviewText(content),
                     is_from_instagram: false,
@@ -877,7 +888,7 @@ async function processWebhookEntries(entries: any[]) {
                     id: `mid_optout_${Date.now()}_${Math.random()}`,
                     conversation_id: conv.id,
                     user_id: user.id,
-                    sender_id: user.business_account_id,
+                    sender_id: user.business_account_id || String(user.id),
                     sender_username: getInstagramUsername(user),
                     content: OPT_OUT_CONFIRMATION_TEXT,
                     is_from_instagram: false,
@@ -899,7 +910,7 @@ async function processWebhookEntries(entries: any[]) {
                     id: `mid_optin_${Date.now()}_${Math.random()}`,
                     conversation_id: conv.id,
                     user_id: user.id,
-                    sender_id: user.business_account_id,
+                    sender_id: user.business_account_id || String(user.id),
                     sender_username: getInstagramUsername(user),
                     content: OPT_IN_CONFIRMATION_TEXT,
                     is_from_instagram: false,
@@ -976,7 +987,7 @@ async function processWebhookEntries(entries: any[]) {
                       match =
                         safeAutomations.find((a) => {
                           const parsed = parseContent(a.response_content)
-                          return a.trigger_source === "comment" && parsed?.check_follow === true
+                          return a.trigger_source === "comment" && (parsed?.check_follow === true || Boolean(parsed?.initial_title))
                         }) || safeAutomations[0]
                     } else {
                       match = dmAutomations.find(
@@ -1052,7 +1063,7 @@ async function processWebhookEntries(entries: any[]) {
                                 id: `mid_ai_${Date.now()}_${Math.random()}`,
                                 conversation_id: conv.id,
                                 user_id: user.id,
-                                sender_id: user.business_account_id,
+                                sender_id: user.business_account_id || String(user.id),
                                 sender_username: user.username,
                                 content: aiReply,
                                 is_from_instagram: false,
@@ -1104,7 +1115,7 @@ async function processWebhookEntries(entries: any[]) {
                                 id: `mid_reply_${Date.now()}_${Math.random()}`,
                                 conversation_id: conv.id,
                                 user_id: user.id,
-                                sender_id: user.business_account_id,
+                                sender_id: user.business_account_id || String(user.id),
                                 sender_username: getInstagramUsername(user),
                                 content: responsePreviewText(content),
                                 is_from_instagram: false,
@@ -1137,7 +1148,7 @@ async function processWebhookEntries(entries: any[]) {
                                 id: `mid_reply_${Date.now()}_${Math.random()}`,
                                 conversation_id: conv.id,
                                 user_id: user.id,
-                                sender_id: user.business_account_id,
+                                sender_id: user.business_account_id || String(user.id),
                                 sender_username: getInstagramUsername(user),
                                 content: "[Follow Gate: Not Following Yet]",
                                 is_from_instagram: false,
@@ -1162,7 +1173,7 @@ async function processWebhookEntries(entries: any[]) {
                                 id: `mid_reply_${Date.now()}_${Math.random()}`,
                                 conversation_id: conv.id,
                                 user_id: user.id,
-                                sender_id: user.business_account_id,
+                                sender_id: user.business_account_id || String(user.id),
                                 sender_username: getInstagramUsername(user),
                                 content: responsePreviewText(content),
                                 is_from_instagram: false,
@@ -1189,7 +1200,7 @@ async function processWebhookEntries(entries: any[]) {
                                 id: `mid_reply_${Date.now()}_${Math.random()}`,
                                 conversation_id: conv.id,
                                 user_id: user.id,
-                                sender_id: user.business_account_id,
+                                sender_id: user.business_account_id || String(user.id),
                                 sender_username: getInstagramUsername(user),
                                 content: "[Still Not Following Prompt]",
                                 is_from_instagram: false,
@@ -1215,7 +1226,7 @@ async function processWebhookEntries(entries: any[]) {
                                   id: `mid_reply_${Date.now()}_${Math.random()}`,
                                   conversation_id: conv.id,
                                   user_id: user.id,
-                                  sender_id: user.business_account_id,
+                                  sender_id: user.business_account_id || String(user.id),
                                   sender_username: getInstagramUsername(user),
                                   content: "[Verification Unavailable — capped]",
                                   is_from_instagram: false,
@@ -1246,7 +1257,7 @@ async function processWebhookEntries(entries: any[]) {
                                   id: `mid_reply_${Date.now()}_${Math.random()}`,
                                   conversation_id: conv.id,
                                   user_id: user.id,
-                                  sender_id: user.business_account_id,
+                                  sender_id: user.business_account_id || String(user.id),
                                   sender_username: getInstagramUsername(user),
                                   content: `[Locked Content Gate — attempt ${attempts}/${UNLOCK_GATE_MAX_ATTEMPTS}]`,
                                   is_from_instagram: false,
@@ -1272,7 +1283,7 @@ async function processWebhookEntries(entries: any[]) {
                                 id: `mid_reply_${Date.now()}_${Math.random()}`,
                                 conversation_id: conv.id,
                                 user_id: user.id,
-                                sender_id: user.business_account_id,
+                                sender_id: user.business_account_id || String(user.id),
                                 sender_username: getInstagramUsername(user),
                                 content: responsePreviewText(content),
                                 is_from_instagram: false,
@@ -1305,7 +1316,7 @@ async function processWebhookEntries(entries: any[]) {
                                 id: `mid_reply_${Date.now()}_${Math.random()}`,
                                 conversation_id: conv.id,
                                 user_id: user.id,
-                                sender_id: user.business_account_id,
+                                sender_id: user.business_account_id || String(user.id),
                                 sender_username: getInstagramUsername(user),
                                 content: "[Locked Content Gate]",
                                 is_from_instagram: false,
@@ -1326,7 +1337,7 @@ async function processWebhookEntries(entries: any[]) {
                             id: `mid_reply_${Date.now()}_${Math.random()}`,
                             conversation_id: conv.id,
                             user_id: user.id,
-                            sender_id: user.business_account_id,
+                            sender_id: user.business_account_id || String(user.id),
                             sender_username: getInstagramUsername(user),
                             content: responsePreviewText(content),
                             is_from_instagram: false,

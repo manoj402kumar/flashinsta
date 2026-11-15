@@ -121,10 +121,22 @@ export async function POST(request: NextRequest) {
       pausedCount,
     })
 
+    const googleEmail =
+      typeof parsedContext.google_email === "string"
+        ? parsedContext.google_email.toLowerCase().trim()
+        : session.email || null
+    const googlePicture =
+      typeof parsedContext.google_picture === "string"
+        ? parsedContext.google_picture
+        : typeof parsedContext.google_profile_pic === "string"
+          ? parsedContext.google_profile_pic
+          : null
+
     setSessionCookie(response, {
       userId: String(targetUserId),
-      username: user.username,
-      profilePic: undefined,
+      username: googleEmail || user.username,
+      email: googleEmail || session.email,
+      profilePic: googlePicture || undefined,
     })
 
     return response

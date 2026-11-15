@@ -21,10 +21,27 @@ import {
 } from "lucide-react"
 import { useInstagramSession } from "@/hooks/use-instagram-session"
 import { ConnectInstagramModal } from "@/components/dashboard/ConnectInstagramModal"
+import { formatIdentityHandle } from "@/lib/identity"
 
 interface DashboardStats {
-  metrics: { totalAutomations: number; activeTriggers: number; audienceReached: number; messagesSent: number }
-  recentActivity: Array<{ id: string; content: string; created_at: string; recipient?: { recipient_username: string } }>
+  metrics?: { totalAutomations: number; activeTriggers: number; audienceReached: number; messagesSent: number }
+  automationsCount?: number
+  activeCount?: number
+  audienceCount?: number
+  messagesSent?: number
+  recentActivity?: Array<{
+    id: string
+    content: string
+    created_at: string
+    sender_username?: string
+    recipient?: { recipient_username: string }
+  }>
+  recentActivities?: Array<{
+    id: string
+    title: string
+    description: string
+    time: string
+  }>
 }
 
 // Per-user client cache ensuring 100% tenant isolation across account switches
@@ -43,10 +60,47 @@ export default function DashboardPage() {
     refreshIgStatus,
   } = useInstagramSession()
 
-  const [stats, setStats] = useState<DashboardStats | null>(() => (userId ? statsCacheByUserId.get(userId) || null : null))
+  const [stats, setStats] = useState<DashboardStats | null>(() => {
+    if (!userId) return null
+    if (statsCacheByUserId.has(userId)) return statsCacheByUserId.get(userId) || null
+    if (typeof window !== "undefined") {
+      try {
+        const stored = window.sessionStorage.getItem("flashinsta_stats_" + userId)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          if (
+            parsed &&
+            (parsed.metrics ||
+              typeof parsed.automationsCount === "number" ||
+              typeof parsed.totalAutomations === "number")
+          ) {
+            statsCacheByUserId.set(userId, parsed)
+            return parsed
+          }
+        }
+      } catch {}
+    }
+    return null
+  })
   const [loading, setLoading] = useState(() => !(userId && statsCacheByUserId.has(userId)))
   const [showConnectModal, setShowConnectModal] = useState(false)
-  const [mediaList, setMediaList] = useState<any[]>(() => (userId && isIgConnected ? mediaCacheByUserId.get(userId) || [] : []))
+  const [mediaList, setMediaList] = useState<any[]>(() => {
+    if (!userId) return []
+    if (mediaCacheByUserId.has(userId)) return mediaCacheByUserId.get(userId) || []
+    if (typeof window !== "undefined") {
+      try {
+        const stored = window.sessionStorage.getItem("flashinsta_reels_" + userId)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            mediaCacheByUserId.set(userId, parsed)
+            return parsed
+          }
+        }
+      } catch {}
+    }
+    return []
+  })
   const [loadingMedia, setLoadingMedia] = useState(false)
 
   const fetchMedia = () => {
@@ -60,6 +114,11 @@ export default function DashboardPage() {
       .then(data => {
         const list = Array.isArray(data) ? data : (data?.data && Array.isArray(data.data)) ? data.data : []
         mediaCacheByUserId.set(userId, list)
+        if (typeof window !== "undefined" && list.length > 0) {
+          try {
+            window.sessionStorage.setItem("flashinsta_reels_" + userId, JSON.stringify(list))
+          } catch {}
+        }
         setMediaList(list)
       })
       .catch(err => console.error("Failed to load Instagram media", err))
@@ -88,6 +147,11 @@ export default function DashboardPage() {
       .then(data => {
         if (data && !data.error) {
           statsCacheByUserId.set(userId, data)
+          if (typeof window !== "undefined") {
+            try {
+              window.sessionStorage.setItem("flashinsta_stats_" + userId, JSON.stringify(data))
+            } catch {}
+          }
           setStats(data)
         }
       })
@@ -110,8 +174,48 @@ export default function DashboardPage() {
 
   if ((sessionLoading || loading) && !stats) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      <div className="mx-auto w-full max-w-[1440px] px-5 py-7 sm:px-8 lg:px-10 space-y-7 animate-pulse">
+        {/* Header Skeleton */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border/60">
+          <div className="space-y-2">
+            <div className="w-56 h-8 rounded-lg bg-muted/60" />
+            <div className="w-80 h-4 rounded-md bg-muted/40" />
+          </div>
+          <div className="w-36 h-10 rounded-xl bg-muted/50" />
+        </div>
+
+        {/* 4 Stat Cards Skeleton */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={`stat-skel-${i}`} className="p-4 sm:p-5 rounded-2xl border border-border/60 bg-card/60 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="w-24 h-4 rounded bg-muted/60" />
+                <div className="w-8 h-8 rounded-lg bg-muted/40" />
+              </div>
+              <div className="w-20 h-7 rounded-lg bg-muted/70" />
+              <div className="w-32 h-3 rounded bg-muted/30" />
+            </div>
+          ))}
+        </div>
+
+        {/* Media Grid Skeleton */}
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center justify-between">
+            <div className="w-44 h-5 rounded bg-muted/60" />
+            <div className="w-24 h-4 rounded bg-muted/40" />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div
+                key={`post-skel-${i}`}
+                className="aspect-square rounded-xl border border-border/60 bg-muted/30 relative overflow-hidden flex flex-col justify-end p-2.5"
+              >
+                <div className="w-8 h-3 rounded bg-muted/60 mb-1.5" />
+                <div className="w-16 h-2 rounded bg-muted/40" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     )
   }
@@ -128,7 +232,12 @@ export default function DashboardPage() {
     )
   }
 
-  const metrics = stats?.metrics
+  const metrics = stats?.metrics || {
+    totalAutomations: stats?.automationsCount ?? 0,
+    activeTriggers: stats?.activeCount ?? 0,
+    messagesSent: stats?.messagesSent ?? 0,
+    audienceReached: stats?.audienceCount ?? 0,
+  }
 
   return (
     <div className="mx-auto w-full max-w-[1440px] px-5 py-7 sm:px-8 lg:px-10">
@@ -138,19 +247,19 @@ export default function DashboardPage() {
             {profilePic ? (
               <img
                 src={profilePic}
-                alt={isIgConnected && igUsername ? igUsername : (username || "Account")}
+                alt={username || "Account"}
                 referrerPolicy="no-referrer"
                 crossOrigin="anonymous"
                 className="size-11 rounded-full object-cover border border-border shadow-sm shrink-0"
               />
             ) : (
               <div className="size-11 rounded-full bg-sidebar-primary flex items-center justify-center font-bold text-base text-sidebar-primary-foreground border border-border shrink-0">
-                {(isIgConnected && igUsername ? igUsername : (username || "I")).charAt(0).toUpperCase()}
+                {(username || "I").charAt(0).toUpperCase()}
               </div>
             )}
             <div>
               <p className="text-sm text-muted-foreground">
-                Welcome back, @{(isIgConnected && igUsername ? igUsername : (username || "Creator")).replace(/^@/, '')}
+                Welcome back, {formatIdentityHandle(username, "Creator")}
               </p>
               <h1 className="mt-0.5 text-3xl font-semibold tracking-[-0.03em]">Your workspace</h1>
             </div>
@@ -218,22 +327,37 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="divide-y divide-border">
-            {stats?.recentActivity?.length ? (
-              stats.recentActivity.slice(0, 6).map(message => (
-                <div key={message.id} className="flex items-center gap-3 px-5 py-4">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary">
-                    <MessageSquare className="size-4" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">@{message.recipient?.recipient_username || "instagram_user"}</p>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">{message.content}</p>
+            {(() => {
+              const activities = stats?.recentActivity?.length
+                ? stats.recentActivity
+                : stats?.recentActivities?.map((a) => ({
+                    id: a.id,
+                    content: a.description,
+                    created_at: a.time,
+                    recipient: { recipient_username: a.title.replace(/^DM (received from|sent to) @/, "") },
+                  })) || []
+
+              return activities.length > 0 ? (
+                activities.slice(0, 6).map((message) => (
+                  <div key={message.id} className="flex items-center gap-3 px-5 py-4">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary">
+                      <MessageSquare className="size-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        @{message.recipient?.recipient_username || (message as any).sender_username || "instagram_user"}
+                      </p>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">{message.content}</p>
+                    </div>
+                    <time className="text-xs text-muted-foreground">
+                      {new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </time>
                   </div>
-                  <time className="text-xs text-muted-foreground">{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
-                </div>
-              ))
-            ) : (
-              <EmptyState icon={MessageSquare} title="No conversations yet" description="New automated replies will appear here." />
-            )}
+                ))
+              ) : (
+                <EmptyState icon={MessageSquare} title="No conversations yet" description="New automated replies will appear here." />
+              )
+            })()}
           </div>
         </section>
 
@@ -351,10 +475,17 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {loadingMedia ? (
-          <div className="flex min-h-48 flex-col items-center justify-center gap-2 py-12 text-center text-muted-foreground">
-            <Loader2 className="size-6 animate-spin text-[#ffe14d]" />
-            <p className="text-xs font-mono-ui">Retrieving live reels & posts from Instagram...</p>
+        {loadingMedia && mediaList.length === 0 ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div
+                key={`media-skel-${i}`}
+                className="aspect-square rounded-xl border border-border/60 bg-muted/30 animate-pulse relative overflow-hidden flex flex-col justify-end p-2.5"
+              >
+                <div className="w-8 h-3 rounded bg-muted/60 mb-1.5" />
+                <div className="w-16 h-2 rounded bg-muted/40" />
+              </div>
+            ))}
           </div>
         ) : mediaList.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">

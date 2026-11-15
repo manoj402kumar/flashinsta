@@ -56,7 +56,7 @@ This repository contains proprietary software and confidential intellectual prop
 - **Simulated Typing Behavior:** Sends Instagram typing indicator signals to create authentic user interactions.
 
 ### 💬 6. Comment, Story & DM Trigger Automations
-- **Comment-to-DM Funnels:** Post-specific or global comment triggers with simultaneous public reply and private DM delivery.
+- **Comment-to-DM Funnels:** Single-post, multi-post, or global comment triggers with simultaneous public reply and private DM delivery.
 - **Story Reply & Mention Automations:** Instant response to story replies, mentions, and emoji reactions with resilient token recovery.
 - **Keyword Matching Engine:** Exact match, phrase match, and multi-keyword options with radio button configuration.
 - **Custom Suggestions & Quick Replies:** Up to 4 customizable quick suggestions synchronized directly with Instagram Messenger Profile.

@@ -32,13 +32,13 @@ export async function GET(request: NextRequest) {
     // 2. Fetch automations
     const { data: automations } = await admin
       .from("automations")
-      .select("id, keyword, match_type, reply_content, is_active, created_at, execution_count")
+      .select("id, name, trigger_source, trigger_type, trigger_value, specific_media_id, is_active, created_at")
       .eq("user_id", userId)
 
     // 3. Fetch conversations count and recent messages
     const { data: conversations } = await admin
       .from("conversations")
-      .select("id, instagram_thread_id, participant_username, last_message_at, message_count")
+      .select("id, recipient_id, recipient_username, last_message_at, created_at")
       .eq("user_id", userId)
 
     const { data: messages } = await admin

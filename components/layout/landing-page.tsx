@@ -28,14 +28,12 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { InstagramAutomationPlayer } from "@/components/video/InstagramAutomationPlayer"
 
 const INSTAGRAM_URL = "https://www.instagram.com/ee.info/"
-const CANONICAL_PROD_URL = "https://insta-p8-fawn.vercel.app"
+const CANONICAL_PROD_URL = process.env.NEXT_PUBLIC_APP_URL || "https://insta-p8-fawn.vercel.app"
 
 function getEffectiveRedirectUri(configuredUri?: string, defaultPath = ""): string {
-  if (typeof window === "undefined") return configuredUri || ""
-  if (window.location.hostname.includes("localhost") || window.location.hostname.includes("127.0.0.1")) {
-    return configuredUri || `${window.location.origin}${defaultPath}`
-  }
-  return `${CANONICAL_PROD_URL}${defaultPath}`
+  if (typeof window === "undefined") return configuredUri || `${CANONICAL_PROD_URL}${defaultPath}`
+  if (configuredUri) return configuredUri
+  return `${window.location.origin}${defaultPath}`
 }
 
 export function LandingPage() {
@@ -52,11 +50,22 @@ export function LandingPage() {
     : "/dashboard"
 
   useEffect(() => {
-    fetch("/api/auth/session")
+    const token = typeof window !== "undefined" ? localStorage.getItem("flashinsta_session_token") : null
+    const headers: HeadersInit = {}
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`
+      headers["x-session-token"] = token
+    }
+
+    fetch("/api/auth/session", { headers, cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
         if (data?.authenticated && data?.userId) {
+          if (data.token && typeof window !== "undefined") {
+            localStorage.setItem("flashinsta_session_token", data.token)
+          }
           setExistingSession({ userId: String(data.userId), username: data.username || "User" })
+          setShowLoginModal(false)
         } else {
           setExistingSession(null)
         }
@@ -72,8 +81,9 @@ export function LandingPage() {
     const code = params.get("code")
     const state = params.get("state")
     const authAction = params.get("auth")
+    const hasDeviceToken = Boolean(localStorage.getItem("flashinsta_session_token"))
 
-    if (authAction === "login" || authAction === "signup") {
+    if ((authAction === "login" || authAction === "signup") && !hasDeviceToken) {
       setAuthMode(authAction)
       setShowLoginModal(true)
       window.history.replaceState({}, document.title, window.location.pathname)
@@ -94,6 +104,9 @@ export function LandingPage() {
         .then((res) => res.json())
         .then((data) => {
           if (data.success) {
+            if (data.token) {
+              localStorage.setItem("flashinsta_session_token", data.token)
+            }
             localStorage.setItem("ig_user_id", data.userId)
             if (data.profilePic) localStorage.setItem("ig_profile_pic", data.profilePic)
             if (data.username) localStorage.setItem("ig_username", data.username)

@@ -2,6 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getSessionFromRequest, setSessionCookie } from "@/lib/session"
 import { getSupabaseAdmin } from "@/lib/supabase-admin"
 import { unlinkAccount, getLinkedAccountIds, isAccountSwitchAllowed, extractAccountInfo } from "@/lib/account-links"
+import { refreshInstagramProfileIfStale } from "@/lib/instagram-profile"
+import { formatIdentityHandle } from "@/lib/identity"
 import { parseSafeJson, safeErrorResponse } from "@/lib/security"
 
 async function disconnectAccountCredentials(admin: ReturnType<typeof getSupabaseAdmin>, targetId: string): Promise<void> {
@@ -101,7 +103,7 @@ export async function POST(request: NextRequest) {
       const nextUserId = remaining[0]
       const { data: nextUser, error: userError } = await admin
         .from("users")
-        .select("id, username, access_token, business_account_id, page_id, ai_context")
+        .select("id, username, access_token, token_expires_at, business_account_id, page_id, ai_context")
         .eq("id", nextUserId)
         .maybeSingle()
 
@@ -112,7 +114,12 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const nextInfo = extractAccountInfo(nextUser)
+      const refreshed = await refreshInstagramProfileIfStale(nextUser)
+      const nextInfo = extractAccountInfo({
+        ...nextUser,
+        ai_context: refreshed.aiContext,
+        business_account_id: refreshed.businessAccountId ?? nextUser.business_account_id,
+      })
 
       // 1. Revoke credentials and wipe Instagram tokens for the removed account
       await disconnectAccountCredentials(admin, strCurrentUserId)
@@ -122,7 +129,7 @@ export async function POST(request: NextRequest) {
 
       const response = NextResponse.json({
         success: true,
-        message: `Account disconnected and removed. Switched active session to @${nextInfo.username}`,
+        message: `Account disconnected and removed. Switched active session to ${formatIdentityHandle(nextInfo.username)}`,
         unlinkedUserId: strCurrentUserId,
         switchedToUserId: nextInfo.userId,
       })

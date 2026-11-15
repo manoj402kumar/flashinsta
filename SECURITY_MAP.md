@@ -109,8 +109,8 @@
 | `/api/auth/google` | `POST` | Exchanges Google auth code for profile & creates user | No | Public | JSON: `{ code, redirectUri }` |
 | `/api/auth/set-username` | `POST` | Updates username for authenticated account | Yes | User | JSON: `{ userId, username }` |
 | `/api/automations` | `GET` | Fetches automations for logged-in user | Yes | User | Query: `userId` |
-| `/api/automations` | `POST` | Creates new automation rule | Yes | User | JSON: `{ name, trigger_source, trigger_type, trigger_value, content, specific_media_id }` |
-| `/api/automations` | `PUT` | Updates existing automation | Yes | User | JSON: `{ id, name, trigger_source, trigger_type, trigger_value, content, specific_media_id }` |
+| `/api/automations` | `POST` | Creates new automation rule | Yes | User | JSON: `{ name, trigger_source, trigger_type, trigger_value, content, specific_media_ids }` |
+| `/api/automations` | `PUT` | Updates existing automation | Yes | User | JSON: `{ id, name, trigger_source, trigger_type, trigger_value, content, specific_media_ids }` |
 | `/api/automations` | `PATCH` | Toggles automation active state or duplicates rule | Yes | User | JSON: `{ id, is_active, action }` |
 | `/api/automations` | `DELETE` | Deletes automation belonging to user | Yes | User | Query: `id` |
 | `/api/business-profile` | `GET` | Returns business description and knowledge | Yes | User | Query: `userId` |

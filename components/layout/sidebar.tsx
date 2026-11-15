@@ -18,6 +18,7 @@ import {
   Mail,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { formatIdentityHandle } from "@/lib/identity"
 import { ThemeToggle } from "@/components/theme-toggle"
 import type { LinkedAccount } from "@/lib/types"
 import {
@@ -72,8 +73,9 @@ export function Sidebar({
   const searchParams = useSearchParams()
   const queryString = searchParams?.toString() ? `?${searchParams.toString()}` : ""
 
-  const displayHandle = (isIgConnected && igUsername ? igUsername : username)?.replace(/^@/, '') || "account"
-  const displayPic = isIgConnected ? profilePic : profilePic
+  const displayName = (isIgConnected && igUsername ? igUsername : username)?.trim() || "account"
+  const displayHandle = formatIdentityHandle(displayName, "account")
+  const displayPic = profilePic
 
   const itemClass = (active: boolean) => cn(
     "relative flex h-10 items-center rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
@@ -125,6 +127,7 @@ export function Sidebar({
             <Link
               key={item.href}
               href={`${item.href}${queryString}`}
+              prefetch={true}
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
               aria-label={collapsed ? item.label : undefined}
@@ -186,7 +189,7 @@ export function Sidebar({
                     className="size-full object-cover"
                   />
                 ) : (
-                  (displayHandle || "I").charAt(0).toUpperCase()
+                  (displayName || "I").charAt(0).toUpperCase()
                 )}
                 {isIgConnected && (
                   <span className="absolute bottom-0 right-0 size-2 rounded-full bg-emerald-500 ring-2 ring-sidebar" />
@@ -197,7 +200,7 @@ export function Sidebar({
                 <>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold text-foreground group-hover:text-foreground">
-                      @{displayHandle}
+                      {displayHandle}
                     </p>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span
@@ -289,7 +292,7 @@ export function Sidebar({
 
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-semibold text-foreground">
-                          @{acc.username.replace(/^@/, "")}
+                          {formatIdentityHandle(acc.username, "Account")}
                         </p>
                         <p className="truncate text-[10px] text-muted-foreground">
                           {acc.isIgConnected ? "Instagram Connected" : "Workspace"}
@@ -310,11 +313,11 @@ export function Sidebar({
                     {displayPic ? (
                       <img src={displayPic} alt={displayHandle} className="size-full object-cover" />
                     ) : (
-                      displayHandle.charAt(0).toUpperCase()
+                      displayName.charAt(0).toUpperCase()
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold">@{displayHandle}</p>
+                    <p className="truncate text-xs font-semibold">{displayHandle}</p>
                     <p className="truncate text-[10px] text-muted-foreground">
                       {isIgConnected ? "Instagram Connected" : "Workspace"}
                     </p>
@@ -340,7 +343,7 @@ export function Sidebar({
 
             {/* Settings & Info */}
             <DropdownMenuItem asChild className="cursor-pointer rounded-xl px-2.5 py-2 text-xs font-medium">
-              <Link href={`/dashboard/settings${queryString}`} onClick={onNavigate} className="flex items-center gap-2.5 w-full">
+              <Link href={`/dashboard/settings${queryString}`} prefetch={true} onClick={onNavigate} className="flex items-center gap-2.5 w-full">
                 <SettingsIcon className="size-4 text-muted-foreground" />
                 <span>Settings</span>
               </Link>

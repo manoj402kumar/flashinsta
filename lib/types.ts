@@ -69,7 +69,8 @@ export interface MediaItem {
 }
 
 export interface MediaSelection {
-  reel_id: string
+  media_ids?: string[]
+  reel_id?: string
   caption?: string
 }
 

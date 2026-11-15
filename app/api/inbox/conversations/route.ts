@@ -79,11 +79,13 @@ export async function GET(request: NextRequest) {
                 for (const m of c.messages.data.reverse()) {
                   await admin.from("messages").upsert(
                     {
+                      id: String(m.id),
                       user_id: session.userId,
                       conversation_id: newConv.id,
+                      sender_id: String(m.from?.id || (String(m.from?.id) === String(bizId) ? bizId : other.id) || "unknown"),
                       content: m.message || "",
                       is_from_instagram: String(m.from?.id) !== String(bizId),
-                      sender_username: m.from?.username || other.username,
+                      sender_username: m.from?.username || other.username || "User",
                       created_at: m.created_time || new Date().toISOString(),
                     },
                     { onConflict: "id" }

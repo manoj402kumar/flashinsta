@@ -166,7 +166,9 @@ export async function POST(request: NextRequest) {
       _instagram: {
         username,
         profilePic,
+        businessAccountId,
         connectedAt: new Date().toISOString(),
+        profilePicUpdatedAt: new Date().toISOString(),
         oauth: true,
       },
     }

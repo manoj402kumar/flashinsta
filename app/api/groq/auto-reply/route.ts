@@ -98,6 +98,10 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json({ ok: true })
+    }
+
     const { error } = await supabase.from("users").update(update).eq("id", session.userId)
     if (error) throw error
 

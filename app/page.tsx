@@ -20,18 +20,29 @@ export default function Home() {
     }
 
     // Verify authenticated state with server before redirecting anywhere
-    fetch("/api/auth/session", { cache: "no-store" })
+    const token = typeof window !== "undefined" ? localStorage.getItem("flashinsta_session_token") : null
+    const headers: HeadersInit = { "Cache-Control": "no-store" }
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`
+      headers["x-session-token"] = token
+    }
+
+    fetch("/api/auth/session", { headers, cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
         if (data?.authenticated && data?.userId) {
+          if (data.token && typeof window !== "undefined") {
+            localStorage.setItem("flashinsta_session_token", data.token)
+          }
           if (code) {
             router.replace("/dashboard?code=" + encodeURIComponent(code))
           } else {
             router.replace("/dashboard")
           }
         } else {
-          // Strictly clear stale IDs from client storage
+          // Strictly clear stale IDs from client storage only when session is confirmed invalid
           if (typeof window !== "undefined") {
+            localStorage.removeItem("flashinsta_session_token")
             localStorage.removeItem("ig_user_id")
             localStorage.removeItem("ig_username")
             localStorage.removeItem("ig_profile_pic")

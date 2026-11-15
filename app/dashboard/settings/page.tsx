@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { useInstagramSession } from "@/hooks/use-instagram-session"
 import { ConnectInstagramModal } from "@/components/dashboard/ConnectInstagramModal"
+import { formatIdentityHandle } from "@/lib/identity"
 
 export default function SettingsPage() {
     const {
@@ -50,11 +51,11 @@ export default function SettingsPage() {
     const [exportingData, setExportingData] = useState(false)
 
     const handleUnlinkAccount = async (targetUserId: string, targetUsername: string, isCurrent: boolean) => {
-        const cleanName = targetUsername.replace(/^@/, "")
+        const displayHandle = formatIdentityHandle(targetUsername, "account")
         const mailContext = email ? ` (associated with ${email})` : ""
         const confirmMsg = isCurrent
-            ? `Disconnect and remove @${cleanName}?\n\nThis will disconnect @${cleanName} from this email ID${mailContext}. Because this is your currently active view, your session will automatically switch to another linked account.`
-            : `Disconnect and remove @${cleanName}?\n\nThis will completely disconnect @${cleanName} from this email ID${mailContext} and our application.`
+            ? `Disconnect and remove ${displayHandle}?\n\nThis will disconnect ${displayHandle} from this email ID${mailContext}. Because this is your currently active view, your session will automatically switch to another linked account.`
+            : `Disconnect and remove ${displayHandle}?\n\nThis will completely disconnect ${displayHandle} from this email ID${mailContext} and our application.`
 
         if (!window.confirm(confirmMsg)) return
 
@@ -152,8 +153,35 @@ export default function SettingsPage() {
 
     if (sessionLoading) {
         return (
-            <div className="flex min-h-[50vh] items-center justify-center">
-                <Loader2 className="animate-spin text-muted-foreground" />
+            <div className="mx-auto max-w-4xl px-5 py-7 sm:px-8 space-y-6 animate-pulse">
+                {/* Header Skeleton */}
+                <div className="space-y-2 pb-4 border-b border-border/60">
+                    <div className="w-36 h-8 rounded-lg bg-muted/60" />
+                    <div className="w-64 h-4 rounded bg-muted/40" />
+                </div>
+
+                {/* Profile Card Skeleton */}
+                <div className="rounded-2xl border border-border/60 bg-card/60 p-6 space-y-4">
+                    <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-full bg-muted/60" />
+                        <div className="space-y-2 flex-1">
+                            <div className="w-40 h-5 rounded bg-muted/60" />
+                            <div className="w-56 h-3.5 rounded bg-muted/40" />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Connected Account Card Skeleton */}
+                <div className="rounded-2xl border border-border/60 bg-card/60 p-6 space-y-3">
+                    <div className="w-48 h-5 rounded bg-muted/60" />
+                    <div className="w-full h-12 rounded-xl bg-muted/30" />
+                </div>
+
+                {/* Linked Accounts Skeleton */}
+                <div className="rounded-2xl border border-border/60 bg-card/60 p-6 space-y-3">
+                    <div className="w-44 h-5 rounded bg-muted/60" />
+                    <div className="w-full h-14 rounded-xl bg-muted/30" />
+                </div>
             </div>
         )
     }
@@ -413,7 +441,7 @@ export default function SettingsPage() {
                                         <div className="min-w-0">
                                             <div className="flex items-center gap-2">
                                                 <span className="text-sm font-bold font-mono-ui text-foreground truncate">
-                                                    @{acc.username.replace(/^@/, "")}
+                                                    {formatIdentityHandle(acc.username, "Account")}
                                                 </span>
                                                 {isCurrent && (
                                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono-ui font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
@@ -451,7 +479,7 @@ export default function SettingsPage() {
                                             title={
                                                 !canRemove
                                                     ? "Cannot remove the only account (use Disconnect Account above)"
-                                                    : `Remove @${acc.username.replace(/^@/, "")} from switcher`
+                                                    : `Remove ${formatIdentityHandle(acc.username, "Account")} from switcher`
                                             }
                                             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-mono-ui text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                                         >

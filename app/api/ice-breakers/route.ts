@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
         .filter((ib) => ib && typeof ib.question === "string" && ib.question.trim().length > 0)
         .map((ib) => ({
           question: String(ib.question || "").slice(0, 80).trim(),
-          response: String(ib.response || "").slice(1000).trim(),
+          response: String(ib.response || "").slice(0, 1000).trim(),
           is_active: true,
           user_id: targetUserId,
         }))

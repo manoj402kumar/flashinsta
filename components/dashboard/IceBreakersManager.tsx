@@ -12,7 +12,19 @@ type IceBreakerRow = { id?: string; question: string; response: string }
 
 export function IceBreakersManager() {
     const { userId, isLoading } = useInstagramSession()
-    const [breakers, setBreakers] = useState<IceBreakerRow[]>([])
+    const [breakers, setBreakers] = useState<IceBreakerRow[]>(() => {
+        if (!userId) return []
+        if (typeof window !== "undefined") {
+            try {
+                const stored = window.sessionStorage.getItem("flashinsta_ib_" + userId)
+                if (stored) {
+                    const parsed = JSON.parse(stored)
+                    if (Array.isArray(parsed)) return parsed
+                }
+            } catch {}
+        }
+        return []
+    })
     const [saving, setSaving] = useState(false)
     const [fetching, setFetching] = useState(true)
 
@@ -25,7 +37,14 @@ export function IceBreakersManager() {
         fetch(`/api/ice-breakers?userId=${userId}`)
             .then(res => res.json())
             .then(data => {
-                if (Array.isArray(data)) setBreakers(data)
+                if (Array.isArray(data)) {
+                    setBreakers(data)
+                    if (typeof window !== "undefined") {
+                        try {
+                            window.sessionStorage.setItem("flashinsta_ib_" + userId, JSON.stringify(data))
+                        } catch {}
+                    }
+                }
                 setFetching(false)
             })
             .catch(err => {
@@ -81,32 +100,51 @@ export function IceBreakersManager() {
         }
     }
 
-    if (isLoading) {
-            return (
-                <div className="p-10 flex justify-center">
-                    <Loader2 className="animate-spin text-accent-yellow-foreground dark:text-accent-yellow" />
+    if (isLoading || (fetching && !breakers.length)) {
+        return (
+            <div className="space-y-6 max-w-4xl mx-auto animate-pulse">
+                <div className="flex items-center justify-between pb-2 border-b border-border/60">
+                    <div className="space-y-2">
+                        <div className="w-56 h-8 rounded-lg bg-muted/60" />
+                        <div className="w-80 h-4 rounded-md bg-muted/40" />
+                    </div>
+                    <div className="w-32 h-10 rounded-xl bg-muted/50" />
                 </div>
-            )
-        }
-
-        if (!userId) {
-            return (
-                <div className="space-y-6 max-w-2xl mx-auto">
-                    <div className="text-center py-10 border border-border rounded-xl text-muted-foreground bg-card">
-                        <p className="text-sm font-medium">Not connected</p>
-                        <p className="text-xs mt-1">Connect your Instagram account to manage Ice Breakers.</p>
+                <div className="space-y-4">
+                    {[1, 2].map((i) => (
+                        <div key={`ib-skel-${i}`} className="bg-card/60 border border-border/60 p-5 rounded-2xl space-y-4">
+                            <div className="space-y-1.5">
+                                <div className="w-20 h-3 rounded bg-muted/50" />
+                                <div className="w-full h-10 rounded-xl bg-muted/40" />
+                            </div>
+                            <div className="space-y-1.5">
+                                <div className="w-24 h-3 rounded bg-muted/50" />
+                                <div className="w-full h-16 rounded-xl bg-muted/30" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <div className="bg-muted/30 border border-border/60 p-4 rounded-xl flex gap-3">
+                    <div className="w-5 h-5 rounded-full bg-muted/50 shrink-0" />
+                    <div className="space-y-1.5 flex-1">
+                        <div className="w-40 h-4 rounded bg-muted/60" />
+                        <div className="w-full h-3 rounded bg-muted/30" />
                     </div>
                 </div>
-            )
-        }
+            </div>
+        )
+    }
 
-        if (fetching && !breakers.length) {
-            return (
-                <div className="p-10 flex justify-center">
-                    <Loader2 className="animate-spin text-accent-yellow-foreground dark:text-accent-yellow" />
+    if (!userId) {
+        return (
+            <div className="space-y-6 max-w-2xl mx-auto">
+                <div className="text-center py-10 border border-border rounded-xl text-muted-foreground bg-card">
+                    <p className="text-sm font-medium">Not connected</p>
+                    <p className="text-xs mt-1">Connect your Instagram account to manage Ice Breakers.</p>
                 </div>
-            )
-        }
+            </div>
+        )
+    }
 
     return (
         <div className="space-y-6 max-w-4xl mx-auto">

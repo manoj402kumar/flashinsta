@@ -15,6 +15,7 @@ import {
 import { getSpintaxPublicReply, expandTemplate } from "@/lib/spintax"
 import { checkAndIncrementWarmupQuota } from "@/lib/warmup"
 import { applyHumanizedJitter } from "@/lib/jitter"
+import { getAutomationMediaIds } from "@/lib/automation-media"
 
 function keywordMatches(triggerValue: string, text: string): boolean {
   if (!triggerValue || !text) return false
@@ -152,8 +153,9 @@ export async function POST(request: NextRequest) {
 
     for (const auto of automations) {
       const mediaIds: string[] = []
-      if (auto.specific_media_id) {
-        mediaIds.push(auto.specific_media_id)
+      const targetMediaIds = getAutomationMediaIds(auto)
+      if (targetMediaIds.length > 0) {
+        mediaIds.push(...targetMediaIds)
       } else {
         // Global rule: fetch recent media IDs
         try {
@@ -174,7 +176,8 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      for (const mediaId of mediaIds) {
+      const uniqueMediaIds = Array.from(new Set(mediaIds))
+      for (const mediaId of uniqueMediaIds) {
         try {
           const commentsUrl = `${baseGraph}/${mediaId}/comments?fields=id,text,from,timestamp,replies{id,username,from}&access_token=${token}&limit=30`
           const cRes = await fetch(commentsUrl)
@@ -266,8 +269,8 @@ export async function POST(request: NextRequest) {
               console.log(`[sync-comments] ⏭️ Comment ${commentId} published over 7 days ago (${comment.timestamp}). Ineligible for private reply.`)
             }
 
-            // Step 1: Try sending DM if mode is dm or both (supporting both keys)
-            if ((replyMode === "dm" || replyMode === "both") && !isOptedOut && isFresh) {
+            // Step 1: Try sending DM if mode allows private replies (both or dm_only)
+            if (replyMode !== "public_only" && !isOptedOut && isFresh) {
               // Enforce Meta humanized pacing jitter (Section 6.2: 3s to 15s randomized delay)
               await applyHumanizedJitter("dm", Number(content.delay_seconds) || 0)
 
@@ -370,7 +373,7 @@ export async function POST(request: NextRequest) {
 
             // Step 2: Public comment reply
             // Post public reply from public_replies rotation with dual-token fallback
-            if (replyMode === "both" || replyMode === "public_only") {
+            if (replyMode !== "dm_only") {
               // Enforce Meta humanized pacing jitter (Section 6.2: 5s to 45s randomized delay)
               await applyHumanizedJitter("comment")
 

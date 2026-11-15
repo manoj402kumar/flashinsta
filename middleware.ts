@@ -13,6 +13,18 @@ if (process.env.NEXT_PUBLIC_APP_URL) {
   } catch {}
 }
 
+if (process.env.VERCEL_URL) {
+  try {
+    ALLOWED_ORIGINS.add(`https://${process.env.VERCEL_URL}`)
+  } catch {}
+}
+
+if (process.env.VERCEL_BRANCH_URL) {
+  try {
+    ALLOWED_ORIGINS.add(`https://${process.env.VERCEL_BRANCH_URL}`)
+  } catch {}
+}
+
 const MAX_PAYLOAD_BYTES = 1024 * 1024 // 1 MB
 
 export async function middleware(request: NextRequest) {
@@ -21,17 +33,20 @@ export async function middleware(request: NextRequest) {
 
   // 0. Strictly Protect /dashboard routes: Unauthenticated or revoked users are redirected to login immediately
   if (path === "/dashboard" || path.startsWith("/dashboard/")) {
+    const authHeader = request.headers.get("authorization")
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null
+    const customHeaderToken = request.headers.get("x-session-token")?.trim()
+
     const sessionCookie =
       request.cookies.get("__Host-insta_session")?.value ||
-      request.cookies.get("insta_session")?.value
+      request.cookies.get("insta_session")?.value ||
+      bearerToken ||
+      customHeaderToken
 
     if (!sessionCookie || !sessionCookie.includes(".")) {
       const loginUrl = new URL("/", request.url)
       loginUrl.searchParams.set("auth", "login")
-      const redirectRes = NextResponse.redirect(loginUrl)
-      redirectRes.cookies.delete("__Host-insta_session")
-      redirectRes.cookies.delete("insta_session")
-      return redirectRes
+      return NextResponse.redirect(loginUrl)
     }
 
     // Cryptographically verify HMAC signature, expiration, and database revocation

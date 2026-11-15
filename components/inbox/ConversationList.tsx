@@ -39,10 +39,24 @@ export function ConversationList({ userId, selectedId, onSelect }: ConversationL
         fetchConversations()
     }, [userId])
 
-    if (loading) {
+    if (loading && conversations.length === 0) {
         return (
-            <div className="flex items-center justify-center h-full">
-                <Loader2 className="w-6 h-6 text-muted-foreground animate-spin" />
+            <div className="flex flex-col h-full border-r border-border bg-card w-full md:w-[350px] animate-pulse">
+                <div className="p-4 border-b border-border space-y-3">
+                    <div className="w-28 h-6 rounded bg-muted/60" />
+                    <div className="w-full h-9 rounded-xl bg-muted/40" />
+                </div>
+                <div className="flex-1 p-2 space-y-2">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                        <div key={`skel-conv-${i}`} className="flex items-center gap-3 p-3 rounded-xl border border-border/40 bg-muted/20">
+                            <div className="w-9 h-9 rounded-full bg-muted/60 shrink-0" />
+                            <div className="space-y-1.5 flex-1">
+                                <div className="w-24 h-3.5 rounded bg-muted/60" />
+                                <div className="w-36 h-2.5 rounded bg-muted/30" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
         )
     }

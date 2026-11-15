@@ -125,8 +125,8 @@ export async function POST(request: NextRequest) {
         id: data.message_id || `mid_${Date.now()}`,
         conversation_id: conversation.id,
         user_id: session.userId,
-        sender_id: user.username,
-        sender_username: user.username,
+        sender_id: user.business_account_id || user.username || String(session.userId),
+        sender_username: user.username || "me",
         content: String(message).slice(0, 1000),
         is_from_instagram: false,
       })
