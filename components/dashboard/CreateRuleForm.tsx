@@ -4363,9 +4363,9 @@ export function CreateRuleForm({
                         />
                       </div>
                       <div className="w-full max-w-[215px] bg-[#1c1c1e] text-white rounded-2xl rounded-bl-xs p-3 border border-zinc-800 shadow-2xl space-y-2.5 font-sans">
-                        {(initialImageUrl || (type === "card" && cardImage ? cardImage : undefined)) && (
+                        {Boolean(initialImageUrl?.trim()) && (
                           <div className="w-full h-20 rounded-xl overflow-hidden -mt-0.5 mb-1.5 border border-white/5 bg-black/40">
-                            <img src={initialImageUrl || cardImage} alt="Cover" className="w-full h-full object-cover" />
+                            <img src={initialImageUrl.trim()} alt="Cover" className="w-full h-full object-cover" />
                           </div>
                         )}
                         <div>
@@ -5230,9 +5230,9 @@ export function CreateRuleForm({
                           />
                         </div>
                         <div className="w-full max-w-[195px] bg-[#1c1c1e] text-white rounded-xl p-2.5 border border-zinc-800 space-y-1.5">
-                          {(initialImageUrl || (type === "card" && cardImage ? cardImage : undefined)) && (
+                          {Boolean(initialImageUrl?.trim()) && (
                             <div className="w-full h-16 rounded-lg overflow-hidden -mt-0.5 mb-1 border border-white/5 bg-black/40">
-                              <img src={initialImageUrl || cardImage} alt="Cover" className="w-full h-full object-cover" />
+                              <img src={initialImageUrl.trim()} alt="Cover" className="w-full h-full object-cover" />
                             </div>
                           )}
                           <h5 className="text-[10px] font-bold leading-tight">{initialTitle || "Hey there!"}</h5>

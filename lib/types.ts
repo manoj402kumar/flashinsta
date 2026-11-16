@@ -35,10 +35,12 @@ export interface ResponseContent {
   initial_title?: string
   initial_subtitle?: string
   initial_button_text?: string
+  initial_image_url?: string
   follow_gate?: {
     initial_title?: string
     initial_subtitle?: string
     initial_button_text?: string
+    initial_image_url?: string
     title?: string
     subtitle?: string
     image_url?: string

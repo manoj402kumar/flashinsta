@@ -281,7 +281,7 @@ export async function POST(request: NextRequest) {
               const initialCardTitle = (gate.initial_title || content.initial_title || "Hey there! I'm so happy you're here, thanks so much for your interest 😊").slice(0, 80)
               const initialCardSubtitle = (gate.initial_subtitle || content.initial_subtitle || "Click below and I'll send you the link in just a sec ✨").slice(0, 80)
               const initialBtnText = (gate.initial_button_text || content.initial_button_text || "Send me the link").slice(0, 20)
-              const initialCardImg = content.initial_image_url || gate.initial_image_url || gate.image_url || content.card?.image_url
+              const initialCardImg = (content.initial_image_url?.trim() || gate.initial_image_url?.trim()) || undefined
 
               const gateElement: any = {
                 title: initialCardTitle,

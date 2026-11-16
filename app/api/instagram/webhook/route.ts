@@ -515,7 +515,7 @@ async function processWebhookEntries(entries: any[]) {
           }
           if (replyMode !== "public_only" && !isSenderOptedOut && isFresh) {
             const gate = content.follow_gate || {}
-            const initialCardImg = content.initial_image_url || gate.initial_image_url || gate.image_url || content.card?.image_url
+            const initialCardImg = (content.initial_image_url?.trim() || gate.initial_image_url?.trim()) || undefined
             console.log(`[webhook] 📩 Sending initial "Send me the link" card to @${senderId} on rule "${match.name}" (follow gate: ${content.check_follow ? "ON" : "OFF"})`)
             await safeSendCardDM(
               { comment_id: commentId },
