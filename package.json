@@ -7,7 +7,7 @@
     "dev": "next dev -H 0.0.0.0",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "node --test scripts/test-card-isolation.mjs scripts/test-automation-media.mjs scripts/test-identity.mjs scripts/test-instagram-profile.mjs scripts/test-instagram-pagination.mjs scripts/test-health-endpoint.mjs scripts/test-logger.mjs scripts/qa-stress-card-isolation.mjs scripts/qa-stress-rate-limiting.mjs scripts/qa-stress-logger.mjs scripts/qa-stress-health.mjs scripts/qa-advanced-fuzz-pbt.mjs scripts/qa-advanced-chaos-fault-injection.mjs scripts/qa-advanced-security-dast.mjs scripts/qa-advanced-soak-memory.mjs scripts/test-feedback-api.mjs && node scripts/check-dm-ordering.cjs && node scripts/check-reply-api.cjs",
+    "test": "node --test scripts/test-card-isolation.mjs scripts/test-automation-media.mjs scripts/test-identity.mjs scripts/test-instagram-profile.mjs scripts/test-instagram-pagination.mjs scripts/test-health-endpoint.mjs scripts/test-logger.mjs scripts/qa-stress-card-isolation.mjs scripts/qa-stress-rate-limiting.mjs scripts/qa-stress-logger.mjs scripts/qa-stress-health.mjs scripts/qa-advanced-fuzz-pbt.mjs scripts/qa-advanced-chaos-fault-injection.mjs scripts/qa-advanced-security-dast.mjs scripts/qa-advanced-soak-memory.mjs scripts/test-feedback-api.mjs scripts/test-admin-auth.mjs && node scripts/check-dm-ordering.cjs && node scripts/check-reply-api.cjs",
     "test:e2e": "node --test scripts/qa-advanced-e2e-browser.mjs",
     "validate": "npm run typecheck && npm test",
     "start": "next start -H 0.0.0.0",

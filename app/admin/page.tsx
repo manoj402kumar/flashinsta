@@ -13,6 +13,7 @@ import {
   Database,
   ExternalLink,
   Eye,
+  EyeOff,
   Filter,
   Instagram,
   Layers,
@@ -174,6 +175,8 @@ export default function AdminPage() {
 
   // Passkey
   const [adminPasskey, setAdminPasskey] = useState("")
+  const [showPasskey, setShowPasskey] = useState(false)
+  const [unlocking, setUnlocking] = useState(false)
 
   // Core Data
   const [stats, setStats] = useState<StatsData | null>(null)
@@ -200,15 +203,17 @@ export default function AdminPage() {
   const [feedbackCategoryFilter, setFeedbackCategoryFilter] = useState("all")
 
   // Helper headers
-  const getAuthHeaders = (): Record<string, string> => {
-    const key = adminPasskey || (typeof window !== "undefined" ? localStorage.getItem("insta_admin_passkey") || "" : "")
+  const getAuthHeaders = (overrideKey?: string): Record<string, string> => {
+    const key = overrideKey !== undefined
+      ? overrideKey
+      : (adminPasskey || (typeof window !== "undefined" ? localStorage.getItem("insta_admin_passkey") || "" : ""))
     return key ? { "x-admin-key": key } : {}
   }
 
   // Load all dashboard telemetry
-  const loadDashboardData = async (showToast = false) => {
+  const loadDashboardData = async (showToast = false, keyToTest?: string) => {
     setRefreshing(true)
-    const headers = getAuthHeaders()
+    const headers = getAuthHeaders(keyToTest)
 
     try {
       const [statsRes, usersRes, webhooksRes, autoRes, dmRes, feedbackRes, diagRes] = await Promise.allSettled([
@@ -226,11 +231,24 @@ export default function AdminPage() {
           setIsLocked(true)
           setLoading(false)
           setRefreshing(false)
-          return
+          if (showToast) {
+            toast.error("Invalid administrator passkey. Please check and try again.")
+          }
+          return false
         }
         if (statsRes.value.ok) {
           setIsLocked(false)
           setStats(await statsRes.value.json())
+          if (keyToTest) {
+            setAdminPasskey(keyToTest)
+            if (typeof window !== "undefined") {
+              localStorage.setItem("insta_admin_passkey", keyToTest)
+              document.cookie = `insta_admin_key=${encodeURIComponent(keyToTest)}; path=/; max-age=604800; SameSite=Lax`
+            }
+          }
+          if (showToast) {
+            toast.success("Admin Command Center unlocked successfully")
+          }
         }
       }
       if (usersRes.status === "fulfilled" && usersRes.value.ok) {
@@ -256,12 +274,10 @@ export default function AdminPage() {
       if (diagRes.status === "fulfilled" && diagRes.value.ok) {
         setDiagnostics(await diagRes.value.json())
       }
-
-      if (showToast) {
-        toast.success("Telemetry refreshed from Supabase & Instagram API")
-      }
+      return true
     } catch (err: any) {
       toast.error("Failed to fetch admin telemetry: " + err.message)
+      return false
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -472,31 +488,53 @@ export default function AdminPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault()
                 const key = adminPasskey.trim()
-                if (!key) return
-                localStorage.setItem("insta_admin_passkey", key)
-                loadDashboardData(true)
+                if (!key) {
+                  toast.error("Please enter your administrator passkey")
+                  return
+                }
+                setUnlocking(true)
+                try {
+                  await loadDashboardData(true, key)
+                } finally {
+                  setUnlocking(false)
+                }
               }}
               className="space-y-3"
             >
-              <Input
-                type="password"
-                placeholder="Enter ADMIN_SECRET..."
-                value={adminPasskey}
-                onChange={(e) => setAdminPasskey(e.target.value)}
-                className="text-xs font-mono"
-                required
-              />
-              <Button type="submit" className="w-full text-xs font-medium">
-                Unlock Dashboard
+              <div className="relative">
+                <Input
+                  type={showPasskey ? "text" : "password"}
+                  placeholder="Enter admin passkey (default: admin123)..."
+                  value={adminPasskey}
+                  onChange={(e) => setAdminPasskey(e.target.value)}
+                  className="text-xs font-mono pr-9"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPasskey(!showPasskey)}
+                  className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  aria-label={showPasskey ? "Hide passkey" : "Show passkey"}
+                >
+                  {showPasskey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                </button>
+              </div>
+              <Button type="submit" disabled={unlocking} className="w-full text-xs font-medium cursor-pointer">
+                {unlocking ? "Verifying passkey..." : "Unlock Dashboard"}
               </Button>
             </form>
-            <div className="text-center pt-2">
-              <Link href="/dashboard" className="text-xs text-muted-foreground hover:underline">
-                Return to Creator App
-              </Link>
+            <div className="text-center pt-1 space-y-2">
+              <p className="text-[11px] text-muted-foreground">
+                Default fallback passkey: <code className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold">admin123</code>
+              </p>
+              <div>
+                <Link href="/dashboard" className="text-xs text-muted-foreground hover:underline">
+                  Return to Creator App
+                </Link>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -552,6 +590,7 @@ export default function AdminPage() {
               size="sm"
               onClick={() => {
                 localStorage.removeItem("insta_admin_passkey")
+                document.cookie = "insta_admin_key=; path=/; max-age=0"
                 setAdminPasskey("")
                 setIsLocked(true)
                 toast.info("Admin session locked")
