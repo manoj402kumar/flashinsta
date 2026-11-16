@@ -168,7 +168,7 @@ export function Sidebar({
           title={collapsed ? "Give feedback" : undefined}
           className={cn(itemClass(false), "w-full cursor-pointer mt-1 text-left")}
         >
-          <MessageSquareHeart className="size-4 shrink-0 text-rose-500" />
+          <MessageSquareHeart className="size-4 shrink-0" />
           {!collapsed && <span>Feedback</span>}
         </button>
       </nav>

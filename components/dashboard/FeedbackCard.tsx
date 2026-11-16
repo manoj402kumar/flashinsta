@@ -29,10 +29,10 @@ interface FeedbackCardProps {
 }
 
 const CATEGORIES = [
-  { id: "feature_request", label: "Feature Request", icon: Lightbulb, color: "text-amber-400 bg-amber-400/10 border-amber-400/20" },
-  { id: "bug", label: "Bug Report", icon: Bug, color: "text-rose-400 bg-rose-400/10 border-rose-400/20" },
-  { id: "improvement", label: "Improvement", icon: Zap, color: "text-sky-400 bg-sky-400/10 border-sky-400/20" },
-  { id: "praise", label: "Praise", icon: Heart, color: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20" },
+  { id: "feature_request", label: "Feature Request", icon: Lightbulb, color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
+  { id: "bug", label: "Bug Report", icon: Bug, color: "text-destructive bg-destructive/10 border-destructive/20" },
+  { id: "improvement", label: "Improvement", icon: Zap, color: "text-sky-500 bg-sky-500/10 border-sky-500/20" },
+  { id: "praise", label: "Praise", icon: Heart, color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" },
 ]
 
 const RATING_LABELS: Record<number, string> = {
@@ -111,7 +111,7 @@ export function FeedbackCard({
     return (
       <div
         className={cn(
-          "rounded-2xl border border-emerald-500/30 bg-emerald-950/20 p-6 text-center shadow-lg transition-all animate-in fade-in zoom-in-95 duration-200",
+          "rounded-2xl border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/20 p-6 text-center shadow-lg transition-all animate-in fade-in zoom-in-95 duration-200",
           className
         )}
       >
@@ -164,7 +164,7 @@ export function FeedbackCard({
             className="flex items-center gap-1.5 rounded-full bg-secondary/80 px-2.5 py-1 border border-border text-[11px] font-semibold text-foreground shadow-xs shrink-0"
             title="Feedback will be posted with this Instagram account"
           >
-            <div className="size-4 rounded-full overflow-hidden bg-gradient-to-tr from-[#f9ed32] via-[#ee2a7b] to-[#002aff] p-[1px] shrink-0">
+            <div className="size-4 rounded-full overflow-hidden bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] p-[1px] shrink-0">
               {profilePic ? (
                 <img
                   src={profilePic}

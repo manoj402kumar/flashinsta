@@ -598,12 +598,12 @@ export default function AdminPage() {
           >
             <div className="flex items-center justify-between text-muted-foreground mb-1">
               <span className="text-xs font-medium">User Feedback</span>
-              <MessageSquareHeart className="size-4 text-rose-500" />
+              <MessageSquareHeart className="size-4 text-primary" />
             </div>
             <div className="text-2xl font-bold tracking-tight flex items-center gap-2">
               <span>{feedbackList.length}</span>
               {newFeedbackCount > 0 && (
-                <Badge variant="destructive" className="text-[10px] h-4 px-1.5">
+                <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-primary/10 text-primary border-primary/20">
                   {newFeedbackCount} new
                 </Badge>
               )}
@@ -689,7 +689,7 @@ export default function AdminPage() {
               <span>Overview</span>
             </TabsTrigger>
             <TabsTrigger value="feedback" className="gap-1.5 py-2 text-xs">
-              <MessageSquareHeart className="size-3.5 text-rose-500" />
+              <MessageSquareHeart className="size-3.5" />
               <span>Feedback ({feedbackList.length})</span>
             </TabsTrigger>
             <TabsTrigger value="users" className="gap-1.5 py-2 text-xs">
@@ -783,7 +783,7 @@ export default function AdminPage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <CardTitle className="text-base font-semibold flex items-center gap-2">
-                          <MessageSquareHeart className="size-4 text-rose-500" />
+                          <MessageSquareHeart className="size-4 text-primary" />
                           <span>User Feedback & Product Requests</span>
                         </CardTitle>
                         <CardDescription className="text-xs">
@@ -999,7 +999,7 @@ export default function AdminPage() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <CardTitle className="text-base font-semibold flex items-center gap-2">
-                      <MessageSquareHeart className="size-4 text-rose-500" />
+                      <MessageSquareHeart className="size-4 text-primary" />
                       <span>Creator Feedback & Feature Requests</span>
                     </CardTitle>
                     <CardDescription className="text-xs">
