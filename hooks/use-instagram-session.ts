@@ -18,12 +18,36 @@ export interface InstagramStatus {
 
 const processedCodes = new Set<string>()
 
+// Module-level deduplication and memory caches to prevent thundering herd across mounting components
+let inFlightSessionPromise: Promise<{ status: number; ok: boolean; data: any }> | null = null
+let sessionMemoryCache: { data: any; timestamp: number } | null = null
+let inFlightAccountsPromise: Promise<any> | null = null
+let accountsMemoryCache: { accounts: LinkedAccount[]; timestamp: number } | null = null
+const SESSION_CACHE_TTL_MS = 15_000 // 15 seconds
+
 export function useInstagramSession() {
-    const [username, setUsername] = useState<string | null>(null)
-    const [email, setEmail] = useState<string | null>(null)
-    const [userId, setUserId] = useState<string | null>(null)
-    const [profilePic, setProfilePic] = useState<string | null>(null)
-    const [isLoading, setIsLoading] = useState<boolean>(true)
+    const [userId, setUserId] = useState<string | null>(() => {
+        if (typeof window !== "undefined") return localStorage.getItem("ig_user_id") || null
+        return null
+    })
+    const [username, setUsername] = useState<string | null>(() => {
+        if (typeof window !== "undefined") return localStorage.getItem("ig_username") || null
+        return null
+    })
+    const [email, setEmail] = useState<string | null>(() => {
+        if (typeof window !== "undefined") return localStorage.getItem("login_email") || null
+        return null
+    })
+    const [profilePic, setProfilePic] = useState<string | null>(() => {
+        if (typeof window !== "undefined") return localStorage.getItem("ig_profile_pic") || null
+        return null
+    })
+    const [isLoading, setIsLoading] = useState<boolean>(() => {
+        if (typeof window !== "undefined") {
+            return !localStorage.getItem("ig_user_id") && !localStorage.getItem("flashinsta_session_token")
+        }
+        return true
+    })
 
     // Instagram connection states (strictly default to disconnected)
     const [isIgConnected, setIsIgConnected] = useState<boolean>(false)
@@ -41,13 +65,23 @@ export function useInstagramSession() {
     const isAuthenticatingRef = useRef(false)
 
     const fetchAccounts = useCallback(async () => {
+        const now = Date.now()
+        if (accountsMemoryCache && now - accountsMemoryCache.timestamp < SESSION_CACHE_TTL_MS) {
+            setAccounts(accountsMemoryCache.accounts)
+            return
+        }
         try {
-            const res = await fetch("/api/auth/accounts")
-            if (res.ok) {
-                const data = await res.json()
-                if (data?.accounts && Array.isArray(data.accounts)) {
-                    setAccounts(data.accounts)
-                }
+            if (!inFlightAccountsPromise) {
+                inFlightAccountsPromise = fetch("/api/auth/accounts")
+                    .then(async (res) => (res.ok ? await res.json() : null))
+                    .finally(() => {
+                        setTimeout(() => { inFlightAccountsPromise = null }, 300)
+                    })
+            }
+            const data = await inFlightAccountsPromise
+            if (data?.accounts && Array.isArray(data.accounts)) {
+                accountsMemoryCache = { accounts: data.accounts, timestamp: Date.now() }
+                setAccounts(data.accounts)
             }
         } catch (e) {
             console.error("Failed to fetch linked accounts:", e)
@@ -96,17 +130,10 @@ export function useInstagramSession() {
         isAuthenticatingRef.current = true
 
         try {
-            // Check session with server (sending stored device token if present)
-            const token = typeof window !== "undefined" ? localStorage.getItem("flashinsta_session_token") : null
-            const headers: HeadersInit = {}
-            if (token) {
-                headers["Authorization"] = `Bearer ${token}`
-                headers["x-session-token"] = token
-            }
-
-            const res = await fetch("/api/auth/session", { headers, cache: "no-store" })
-            if (res.ok) {
-                const data = await res.json()
+            const now = Date.now()
+            // 1. Instant response from module memory cache if available and not fresh
+            if (!options?.fresh && sessionMemoryCache && (now - sessionMemoryCache.timestamp < SESSION_CACHE_TTL_MS)) {
+                const data = sessionMemoryCache.data
                 if (data?.authenticated && data?.userId) {
                     const sid = String(data.userId)
                     const connected = Boolean(data.isIgConnected)
@@ -114,63 +141,118 @@ export function useInstagramSession() {
                     const spic = data.profilePic || null
                     const smail = data.email || null
 
-                    // Synchronize local storage to current user
-                    if (typeof window !== "undefined") {
-                        if (data.token) {
-                            localStorage.setItem("flashinsta_session_token", data.token)
-                        }
-                        const cachedId = localStorage.getItem("ig_user_id")
-                        if (cachedId && cachedId !== sid) {
-                            localStorage.removeItem("ig_user_id")
-                            localStorage.removeItem("ig_username")
-                            localStorage.removeItem("ig_profile_pic")
-                            localStorage.removeItem("login_email")
-                        }
-                        localStorage.setItem("ig_user_id", sid)
-                        localStorage.setItem("ig_username", sname)
-                        if (spic) localStorage.setItem("ig_profile_pic", spic)
-                        else localStorage.removeItem("ig_profile_pic")
-                        if (smail) localStorage.setItem("login_email", smail)
-                    }
-
                     setUserId(sid)
                     setUsername(sname)
                     setEmail(smail)
                     setProfilePic(spic)
                     setIsIgConnected(connected)
                     setIgUsername(connected ? (data.igUsername || sname) : null)
-
-                    void fetchIgStatus(sid, options)
-                    void fetchAccounts()
                     setIsLoading(false)
                     isAuthenticatingRef.current = false
                     return
                 }
             }
 
-            // Strictly unauthenticated: clean state
-            if (typeof window !== "undefined") {
-                localStorage.removeItem("flashinsta_session_token")
-                localStorage.removeItem("ig_user_id")
-                localStorage.removeItem("ig_username")
-                localStorage.removeItem("ig_profile_pic")
-                localStorage.removeItem("login_email")
+            // 2. Deduplicate network request across simultaneously mounting components
+            if (!inFlightSessionPromise || options?.fresh) {
+                const token = typeof window !== "undefined" ? localStorage.getItem("flashinsta_session_token") : null
+                const headers: HeadersInit = {}
+                if (token) {
+                    headers["Authorization"] = `Bearer ${token}`
+                    headers["x-session-token"] = token
+                }
+
+                inFlightSessionPromise = fetch("/api/auth/session", { headers, cache: "no-store" })
+                    .then(async (res) => {
+                        const json = await res.json().catch(() => null)
+                        return { status: res.status, ok: res.ok, data: json }
+                    })
+                    .finally(() => {
+                        setTimeout(() => { inFlightSessionPromise = null }, 300)
+                    })
             }
-            setUserId(null)
-            setUsername(null)
-            setEmail(null)
-            setProfilePic(null)
-            setIsIgConnected(false)
-            setIgUsername(null)
-            setBusinessAccountId(null)
-            setAccounts([])
+
+            const result = await inFlightSessionPromise
+            if (result.ok && result.data?.authenticated && result.data?.userId) {
+                const data = result.data
+                sessionMemoryCache = { data, timestamp: Date.now() }
+
+                const sid = String(data.userId)
+                const connected = Boolean(data.isIgConnected)
+                const sname = data.username || (connected ? data.igUsername : data.email) || "User"
+                const spic = data.profilePic || null
+                const smail = data.email || null
+
+                // Synchronize local storage to current user
+                if (typeof window !== "undefined") {
+                    if (data.token) {
+                        localStorage.setItem("flashinsta_session_token", data.token)
+                    }
+                    const cachedId = localStorage.getItem("ig_user_id")
+                    if (cachedId && cachedId !== sid) {
+                        localStorage.removeItem("ig_user_id")
+                        localStorage.removeItem("ig_username")
+                        localStorage.removeItem("ig_profile_pic")
+                        localStorage.removeItem("login_email")
+                    }
+                    localStorage.setItem("ig_user_id", sid)
+                    localStorage.setItem("ig_username", sname)
+                    if (spic) localStorage.setItem("ig_profile_pic", spic)
+                    else localStorage.removeItem("ig_profile_pic")
+                    if (smail) localStorage.setItem("login_email", smail)
+                }
+
+                setUserId(sid)
+                setUsername(sname)
+                setEmail(smail)
+                setProfilePic(spic)
+                setIsIgConnected(connected)
+                setIgUsername(connected ? (data.igUsername || sname) : null)
+
+                void fetchIgStatus(sid, options)
+                void fetchAccounts()
+                setIsLoading(false)
+                isAuthenticatingRef.current = false
+                return
+            }
+
+            // Strictly unauthenticated: clean state only if server explicitly returned 401 or authenticated === false
+            if (result.status === 401 || (result.ok && result.data?.authenticated === false)) {
+                sessionMemoryCache = null
+                accountsMemoryCache = null
+                if (typeof window !== "undefined") {
+                    localStorage.removeItem("flashinsta_session_token")
+                    localStorage.removeItem("ig_user_id")
+                    localStorage.removeItem("ig_username")
+                    localStorage.removeItem("ig_profile_pic")
+                    localStorage.removeItem("login_email")
+                }
+                setUserId(null)
+                setUsername(null)
+                setEmail(null)
+                setProfilePic(null)
+                setIsIgConnected(false)
+                setIgUsername(null)
+                setBusinessAccountId(null)
+                setAccounts([])
+            } else if (result.status === 429 || result.status >= 500) {
+                // Rate-limited or transient network error: NEVER wipe out existing session!
+                console.warn(`[Session] HTTP ${result.status} notice from server. Preserving active session.`)
+                const cachedId = typeof window !== "undefined" ? localStorage.getItem("ig_user_id") : null
+                if (cachedId) {
+                    setUserId(cachedId)
+                    setUsername(typeof window !== "undefined" ? localStorage.getItem("ig_username") : null)
+                    setEmail(typeof window !== "undefined" ? localStorage.getItem("login_email") : null)
+                    setProfilePic(typeof window !== "undefined" ? localStorage.getItem("ig_profile_pic") : null)
+                }
+            }
         } catch (e) {
-            console.error("Session verification failed:", e)
+            console.error("Session verification network error:", e)
         } finally {
             setIsLoading(false)
             isAuthenticatingRef.current = false
         }
-    }, [fetchIgStatus])
+    }, [fetchIgStatus, fetchAccounts])
 
     useEffect(() => {
         const code = searchParams.get("code")

@@ -40,6 +40,7 @@ export async function middleware(request: NextRequest) {
     const sessionCookie =
       request.cookies.get("__Host-insta_session")?.value ||
       request.cookies.get("insta_session")?.value ||
+      request.cookies.get("flashinsta_session_token")?.value ||
       bearerToken ||
       customHeaderToken
 
@@ -81,8 +82,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // 2. Strict Rate Limiting on Authentication & Sensitive Endpoints
-  if (path.startsWith("/api/auth") || path.startsWith("/api/instagram/test-login")) {
-    const rate = checkRateLimit(request, { limit: 20, windowMs: 60 * 1000, identifierPrefix: "auth" })
+  if (path.startsWith("/api/auth/google") || path.startsWith("/api/instagram/test-login")) {
+    const rate = checkRateLimit(request, { limit: 40, windowMs: 60 * 1000, identifierPrefix: "auth-login" })
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many authentication attempts. Please try again later." },
@@ -92,8 +93,19 @@ export async function middleware(request: NextRequest) {
         }
       )
     }
+  } else if (path.startsWith("/api/auth")) {
+    const rate = checkRateLimit(request, { limit: 300, windowMs: 60 * 1000, identifierPrefix: "auth-session" })
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please slow down." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rate.reset), "X-RateLimit-Remaining": "0" },
+        }
+      )
+    }
   } else if (path.startsWith("/api/inbox/send") || path.startsWith("/api/instagram/send-message")) {
-    const rate = checkRateLimit(request, { limit: 60, windowMs: 60 * 1000, identifierPrefix: "dm" })
+    const rate = checkRateLimit(request, { limit: 120, windowMs: 60 * 1000, identifierPrefix: "dm" })
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Rate limit exceeded. Please slow down." },
