@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { useInstagramSession } from "@/hooks/use-instagram-session"
 import { ConnectInstagramModal } from "@/components/dashboard/ConnectInstagramModal"
+import { FeedbackCard } from "@/components/dashboard/FeedbackCard"
 import { formatIdentityHandle } from "@/lib/identity"
 
 interface DashboardStats {
@@ -564,6 +565,17 @@ export default function DashboardPage() {
             </p>
           </div>
         )}
+      </section>
+
+      {/* Creator Feedback Section */}
+      <section className="pt-2">
+        <FeedbackCard
+          userId={userId}
+          username={username}
+          igUsername={igUsername}
+          profilePic={profilePic}
+          isIgConnected={isIgConnected}
+        />
       </section>
 
       {/* Connect Instagram Modal */}

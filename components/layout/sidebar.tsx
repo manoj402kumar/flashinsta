@@ -16,10 +16,12 @@ import {
   Shield,
   ExternalLink,
   Mail,
+  MessageSquareHeart,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatIdentityHandle } from "@/lib/identity"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { FeedbackModal } from "@/components/dashboard/FeedbackModal"
 import type { LinkedAccount } from "@/lib/types"
 import {
   DropdownMenu,
@@ -72,6 +74,7 @@ export function Sidebar({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const queryString = searchParams?.toString() ? `?${searchParams.toString()}` : ""
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false)
 
   const displayName = (isIgConnected && igUsername ? igUsername : username)?.trim() || "account"
   const displayHandle = formatIdentityHandle(displayName, "account")
@@ -157,6 +160,17 @@ export function Sidebar({
           <LifeBuoy className="size-4 shrink-0" />
           {!collapsed && <span>Help and support</span>}
         </a>
+
+        <button
+          type="button"
+          onClick={() => setShowFeedbackModal(true)}
+          aria-label={collapsed ? "Give feedback" : undefined}
+          title={collapsed ? "Give feedback" : undefined}
+          className={cn(itemClass(false), "w-full cursor-pointer mt-1 text-left")}
+        >
+          <MessageSquareHeart className="size-4 shrink-0 text-rose-500" />
+          {!collapsed && <span>Feedback</span>}
+        </button>
       </nav>
 
       {/* Bottom Area: Appearance & Instagram-style Account Switcher */}
@@ -378,6 +392,15 @@ export function Sidebar({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      <FeedbackModal
+        open={showFeedbackModal}
+        onOpenChange={setShowFeedbackModal}
+        username={username}
+        igUsername={igUsername}
+        profilePic={profilePic}
+        isIgConnected={isIgConnected}
+      />
     </aside>
   )
 }

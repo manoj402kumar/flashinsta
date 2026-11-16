@@ -147,6 +147,8 @@ interface FeedbackItem {
   id: string
   userId: string | null
   username: string
+  igUsername?: string | null
+  profilePic?: string | null
   category: string
   rating: number
   message: string
@@ -807,6 +809,19 @@ export default function AdminPage() {
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-xs font-semibold text-foreground">{fb.username}</span>
+                                  {fb.igUsername && fb.igUsername.startsWith("@") && (
+                                    <a
+                                      href={`https://instagram.com/${fb.igUsername.replace(/^@/, "")}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 rounded-md bg-pink-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-pink-600 dark:text-pink-400 hover:underline border border-pink-500/20"
+                                      title="View Instagram Profile"
+                                    >
+                                      <Instagram className="size-2.5" />
+                                      <span>{fb.igUsername}</span>
+                                      <ExternalLink className="size-2" />
+                                    </a>
+                                  )}
                                   <Badge
                                     variant="outline"
                                     className={`text-[10px] h-4 px-1.5 capitalize ${
@@ -1050,9 +1065,41 @@ export default function AdminPage() {
                                 ))}
                               </div>
                             </td>
-                            <td className="p-3 font-semibold text-foreground">
-                              {fb.username}
-                              {fb.userId && <div className="text-[10px] text-muted-foreground font-mono font-normal">ID: {fb.userId}</div>}
+                            <td className="p-3">
+                              <div className="flex items-center gap-2.5">
+                                {fb.profilePic ? (
+                                  <img
+                                    src={fb.profilePic}
+                                    alt=""
+                                    className="size-7 rounded-full object-cover border border-border shrink-0"
+                                    onError={(e) => {
+                                      ;(e.currentTarget as HTMLElement).style.display = "none"
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="size-7 rounded-full bg-secondary flex items-center justify-center text-xs font-semibold shrink-0">
+                                    {(fb.username || "C").charAt(0).toUpperCase()}
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <div className="font-semibold text-foreground text-xs truncate max-w-[140px]">{fb.username}</div>
+                                  {fb.igUsername && fb.igUsername.startsWith("@") ? (
+                                    <a
+                                      href={`https://instagram.com/${fb.igUsername.replace(/^@/, "")}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-pink-600 dark:text-pink-400 hover:underline"
+                                      title="Open Instagram Profile"
+                                    >
+                                      <Instagram className="size-2.5" />
+                                      <span className="truncate max-w-[120px]">{fb.igUsername}</span>
+                                      <ExternalLink className="size-2" />
+                                    </a>
+                                  ) : fb.userId ? (
+                                    <div className="text-[10px] text-muted-foreground font-mono">ID: {fb.userId}</div>
+                                  ) : null}
+                                </div>
+                              </div>
                             </td>
                             <td className="p-3">
                               <Badge
