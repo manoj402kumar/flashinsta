@@ -11,14 +11,7 @@ function safeCompare(a: string, b: string): boolean {
 }
 
 function getAdminSecret(): string {
-  const secret = process.env.ADMIN_SECRET || process.env.ADMIN_PASSKEY
-  if (!secret) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("[admin-auth] Fatal: ADMIN_SECRET or ADMIN_PASSKEY must be set in production")
-    }
-    return "dev-local-admin-passkey-change-in-prod"
-  }
-  return secret
+  return process.env.ADMIN_SECRET || process.env.ADMIN_PASSKEY || ""
 }
 
 export function isAuthorizedAdmin(request: NextRequest): boolean {
@@ -26,13 +19,13 @@ export function isAuthorizedAdmin(request: NextRequest): boolean {
 
   // 1. Check secure request header (constant-time comparison)
   const authHeader = request.headers.get("x-admin-key")
-  if (authHeader && safeCompare(authHeader, adminSecret)) {
+  if (adminSecret && authHeader && safeCompare(authHeader, adminSecret)) {
     return true
   }
 
   // 2. Check secure cookie (constant-time comparison)
   const cookieKey = request.cookies.get("insta_admin_key")?.value
-  if (cookieKey && safeCompare(cookieKey, adminSecret)) {
+  if (adminSecret && cookieKey && safeCompare(cookieKey, adminSecret)) {
     return true
   }
 
