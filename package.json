@@ -7,7 +7,7 @@
     "dev": "next dev -H 0.0.0.0",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "node --test scripts/test-card-isolation.mjs scripts/test-automation-media.mjs scripts/test-identity.mjs scripts/test-instagram-profile.mjs scripts/test-instagram-pagination.mjs scripts/test-health-endpoint.mjs && node scripts/check-dm-ordering.cjs && node scripts/check-reply-api.cjs",
+    "test": "node --test scripts/test-card-isolation.mjs scripts/test-automation-media.mjs scripts/test-identity.mjs scripts/test-instagram-profile.mjs scripts/test-instagram-pagination.mjs scripts/test-health-endpoint.mjs scripts/test-logger.mjs && node scripts/check-dm-ordering.cjs && node scripts/check-reply-api.cjs",
     "validate": "npm run typecheck && npm test",
     "start": "next start -H 0.0.0.0",
     "remotion:preview": "remotion studio remotion/index.ts",

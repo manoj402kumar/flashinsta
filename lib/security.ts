@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { logger } from "./logger"
 
 const MAX_PAYLOAD_BYTES = 1024 * 1024 // 1 MB limit
 
@@ -61,12 +62,6 @@ export function safeErrorResponse(
   customMessage = "Internal Server Error",
   statusCode = 500
 ): NextResponse {
-  // Always log internal details securely on the server side for debugging
-  if (process.env.NODE_ENV !== "production") {
-    console.error("[Server Error]", error)
-  } else {
-    console.error("[Server Error]", error instanceof Error ? error.message : "Unknown error")
-  }
-
+  logger.error(customMessage, error, { subsystem: "api", statusCode })
   return NextResponse.json({ error: customMessage }, { status: statusCode })
 }
