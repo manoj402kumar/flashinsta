@@ -16,8 +16,7 @@ function getAdminSecrets() {
   if (envSecret && envSecret.trim()) {
     secrets.push(envSecret.trim())
   }
-  // Standard fallbacks documented in SECURITY_MAP and development
-  secrets.push("admin123")
+  // Standard fallback
   secrets.push("dev-local-admin-passkey-change-in-prod")
   return secrets
 }
@@ -65,19 +64,19 @@ test("Admin Auth Verification Matrix", async (t) => {
   delete process.env.ADMIN_SECRET
   delete process.env.ADMIN_PASSKEY
 
-  await t.test("1. Default fallback passkey 'admin123' via x-admin-key succeeds", () => {
-    const req = mockRequest({ headers: { "x-admin-key": "admin123" } })
-    assert.equal(verifyAdminAuth(req), true)
-  })
-
-  await t.test("2. Default fallback 'dev-local-admin-passkey-change-in-prod' via x-admin-key succeeds", () => {
+  await t.test("1. Default fallback passkey 'dev-local-admin-passkey-change-in-prod' via x-admin-key succeeds", () => {
     const req = mockRequest({ headers: { "x-admin-key": "dev-local-admin-passkey-change-in-prod" } })
     assert.equal(verifyAdminAuth(req), true)
   })
 
-  await t.test("3. Passkey with trailing/leading whitespace is trimmed and succeeds", () => {
-    const req = mockRequest({ headers: { "x-admin-key": "  admin123 \n" } })
+  await t.test("2. Passkey with trailing/leading whitespace is trimmed and succeeds", () => {
+    const req = mockRequest({ headers: { "x-admin-key": "  dev-local-admin-passkey-change-in-prod \n" } })
     assert.equal(verifyAdminAuth(req), true)
+  })
+
+  await t.test("3. Removed old passkey 'admin123' fails", () => {
+    const req = mockRequest({ headers: { "x-admin-key": "admin123" } })
+    assert.equal(verifyAdminAuth(req), false)
   })
 
   await t.test("4. Invalid passkey fails cleanly", () => {
@@ -91,7 +90,7 @@ test("Admin Auth Verification Matrix", async (t) => {
   })
 
   await t.test("6. Valid passkey via cookie 'insta_admin_key' succeeds", () => {
-    const req = mockRequest({ cookies: { insta_admin_key: "admin123" } })
+    const req = mockRequest({ cookies: { insta_admin_key: "dev-local-admin-passkey-change-in-prod" } })
     assert.equal(verifyAdminAuth(req), true)
   })
 

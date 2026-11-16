@@ -16,8 +16,7 @@ function getAdminSecrets(): string[] {
   if (envSecret && envSecret.trim()) {
     secrets.push(envSecret.trim())
   }
-  // Standard fallbacks documented in SECURITY_MAP and development
-  secrets.push("admin123")
+  // Standard fallback passkey
   secrets.push("dev-local-admin-passkey-change-in-prod")
   return secrets
 }

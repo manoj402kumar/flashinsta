@@ -507,7 +507,7 @@ export default function AdminPage() {
               <div className="relative">
                 <Input
                   type={showPasskey ? "text" : "password"}
-                  placeholder="Enter admin passkey (default: admin123)..."
+                  placeholder="Enter admin passkey (default: dev-local-admin-passkey-change-in-prod)..."
                   value={adminPasskey}
                   onChange={(e) => setAdminPasskey(e.target.value)}
                   className="text-xs font-mono pr-9"
@@ -528,7 +528,7 @@ export default function AdminPage() {
             </form>
             <div className="text-center pt-1 space-y-2">
               <p className="text-[11px] text-muted-foreground">
-                Default fallback passkey: <code className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold">admin123</code>
+                Default fallback passkey: <code className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold">dev-local-admin-passkey-change-in-prod</code>
               </p>
               <div>
                 <Link href="/dashboard" className="text-xs text-muted-foreground hover:underline">

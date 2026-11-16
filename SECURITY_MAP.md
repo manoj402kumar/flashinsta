@@ -77,7 +77,7 @@
 ### 3.3 Roles & Access Control
 - **User / Creator:** Default role for anyone authenticated.
 - **Admin:** Protected by `lib/admin-auth.ts`.
-  - Checks header `x-admin-key`, query param `adminKey`, or cookie `insta_admin_key` against `ADMIN_SECRET` (defaults to `"admin123"` if unset).
+  - Checks header `x-admin-key`, query param `adminKey`, or cookie `insta_admin_key` against `ADMIN_SECRET` (defaults to `"dev-local-admin-passkey-change-in-prod"` if unset).
   - **CRITICAL ROLE BYPASS:** `isAuthorizedAdmin()` contains the following fallback:
     ```ts
     const session = getSessionFromRequest(request)
